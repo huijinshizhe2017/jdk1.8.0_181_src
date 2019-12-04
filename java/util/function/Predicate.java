@@ -40,6 +40,7 @@ import java.util.Objects;
 public interface Predicate<T> {
 
     /**
+     * 对于一个给定的参数评估断言。
      * Evaluates this predicate on the given argument.
      *
      * @param t the input argument
@@ -49,6 +50,7 @@ public interface Predicate<T> {
     boolean test(T t);
 
     /**
+     * 返回一个断言与另外一个断言的短路逻辑与的复合断言。当计算一个复合的断言，如果以一个断言为false，则不执行另外一个断言。
      * Returns a composed predicate that represents a short-circuiting logical
      * AND of this predicate and another.  When evaluating the composed
      * predicate, if this predicate is {@code false}, then the {@code other}

@@ -77,7 +77,9 @@ import java.util.function.UnaryOperator;
  * and {@link DoubleStream}, all of which are referred to as "streams" and
  * conform to the characteristics and restrictions described here.
  *
- * 为了执行运算，流操作被组合到一个成为流管道的对象。
+ * 为了执行运算，流操作被组合到一个成为流管道的对象。一个流管道包含一个源(可能是一个数组、集合、生成的函数、I/O流管道等等)、
+ * 零或者中间操作(指从一个流转换为另外一个流，比如filter)以及终止操作(他可以输出一个结果或者其他作用，比如count或者foreach)
+ * 流对象是懒惰的。通常当发起终止操作并且源元素被需的消费才能导致对于源数据的计算。
  * <p>To perform a computation, stream
  * <a href="package-summary.html#StreamOps">operations</a> are composed into a
  * <em>stream pipeline</em>.  A stream pipeline consists of a source (which
@@ -90,6 +92,8 @@ import java.util.function.UnaryOperator;
  * terminal operation is initiated, and source elements are consumed only
  * as needed.
  *
+ * 集合和流表面看起来很相像，但是他们有个不同的目标。集合关注的是对于元素的管理和访问。相反，流并不能提供直接操作或访问他们的元素，而是关注
+ * 声明式的描述源以及在数据源上表现出计算操作的骨架。然而，如果提供的流操作未提供所需的功能，迭代和分割迭代操作可用于执行受控遍历。
  * <p>Collections and streams, while bearing some superficial similarities,
  * have different goals.  Collections are primarily concerned with the efficient
  * management of, and access to, their elements.  By contrast, streams do not
@@ -100,12 +104,18 @@ import java.util.function.UnaryOperator;
  * functionality, the {@link #iterator()} and {@link #spliterator()} operations
  * can be used to perform a controlled traversal.
  *
+ *  像上面的“小部件”示例一样，流管道可以视为流源上的查询操作。
+ *  除非源明确设计用于并发修改（例如ConcurrentHashMap），当正在查询时的来源修改流可能导致不可预测或错误的行为。
  * <p>A stream pipeline, like the "widgets" example above, can be viewed as
  * a <em>query</em> on the stream source.  Unless the source was explicitly
  * designed for concurrent modification (such as a {@link ConcurrentHashMap}),
  * unpredictable or erroneous behavior may result from modifying the stream
  * source while it is being queried.
  *
+ *  大多数流操作接受描述用户指定的参数行为，例如在以上实例的{@code mapToInt}传递给的Lambda表达式{@code w-> w.getWeight()}.
+ *  为了保持正确的行为，这些<em>行为参数包括:
+ *  1.必须是非接口类的参数（他们不会修改流的源头）
+ *  2.在许多示例中必须是无状态的（他们的结果在执行流管道期间不依赖于任何改变的状态）
  * <p>Most stream operations accept parameters that describe user-specified
  * behavior, such as the lambda expression {@code w -> w.getWeight()} passed to
  * {@code mapToInt} in the example above.  To preserve correct behavior,
@@ -117,13 +127,17 @@ import java.util.function.UnaryOperator;
  * (their result should not depend on any state that might change during execution
  * of the stream pipeline).</li>
  * </ul>
- *
+ *  这些参数类似于Function的方法接口总会被lambda表达式或者方法引用所取代。除非另有说明，否则这些参数必须为非空。
  * <p>Such parameters are always instances of a
  * <a href="../function/package-summary.html">functional interface</a> such
  * as {@link java.util.function.Function}, and are often lambda expressions or
  * method references.  Unless otherwise specified these parameters must be
  * <em>non-null</em>.
  *
+ * 一个流只能被操作一次(被调用中间操作或者终止操作).例如，这排除了“分叉”流，其中同一源提供两个或多个管道，
+ * 或多个遍历相同的流。
+ * 如果一个流被再次使用他就会抛出IllegalStateException异常。但是，由于一些流操作可能返回其接收者，而不是新的流对象，
+ * 它不可能在所有情况下都检测到重用。
  * <p>A stream should be operated on (invoking an intermediate or terminal stream
  * operation) only once.  This rules out, for example, "forked" streams, where
  * the same source feeds two or more pipelines, or multiple traversals of the
@@ -131,7 +145,9 @@ import java.util.function.UnaryOperator;
  * if it detects that the stream is being reused. However, since some stream
  * operations may return their receiver rather than a new stream object, it may
  * not be possible to detect reuse in all cases.
- *
+ * 流对象有一个关闭流的方法并且实现了AutoColoseable接口。但并不是所有的流实例需要在使用后关闭他。通常，只有那些IO通道(比如
+ * 那些通过Files.line返回的结果)需要关闭。大多数流由集合，数组或生成函数支持，不需要特殊资源管理。
+ * (如果流确实需要关闭，则可以在{@code try} -with-resources语句中声明为资源。）
  * <p>Streams have a {@link #close()} method and implement {@link AutoCloseable},
  * but nearly all stream instances do not actually need to be closed after use.
  * Generally, only streams whose source is an IO channel (such as those returned
@@ -139,6 +155,10 @@ import java.util.function.UnaryOperator;
  * are backed by collections, arrays, or generating functions, which require no
  * special resource management.  (If a stream does require closing, it can be
  * declared as a resource in a {@code try}-with-resources statement.)
+ *
+ * 流管道可能通过序列或者并行的方式执行。执行模式是流对象的一个属性。流对象在创建的时候可以选择一种模式去执行。
+ * （例如，Collection.stream()方法创建了一个有序流，Collection.parallelStream()会创建一个并行流。除此之外，还可以通过
+ * sequential()或者parallel()方法进行修改，也可以通过isParallel()方法查询当前模式）。
  *
  * <p>Stream pipelines may execute either sequentially or in
  * <a href="package-summary.html#Parallelism">parallel</a>.  This
@@ -160,9 +180,11 @@ import java.util.function.UnaryOperator;
 public interface Stream<T> extends BaseStream<T, Stream<T>> {
 
     /**
+     * 返回一个由与此流匹配的元素组成的流给定断言。
      * Returns a stream consisting of the elements of this stream that match
      * the given predicate.
      *
+     * 这是一个中间操纵。
      * <p>This is an <a href="package-summary.html#StreamOps">intermediate
      * operation</a>.
      *
