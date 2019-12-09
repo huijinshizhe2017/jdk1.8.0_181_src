@@ -114,7 +114,7 @@ import java.util.function.UnaryOperator;
  *
  *  大多数流操作接受描述用户指定的参数行为，例如在以上实例的{@code mapToInt}传递给的Lambda表达式{@code w-> w.getWeight()}.
  *  为了保持正确的行为，这些<em>行为参数包括:
- *  1.必须是非接口类的参数（他们不会修改流的源头）
+ *  1.必须是无干扰的参数（他们不会修改流的源头）
  *  2.在许多示例中必须是无状态的（他们的结果在执行流管道期间不依赖于任何改变的状态）
  * <p>Most stream operations accept parameters that describe user-specified
  * behavior, such as the lambda expression {@code w -> w.getWeight()} passed to
@@ -145,6 +145,7 @@ import java.util.function.UnaryOperator;
  * if it detects that the stream is being reused. However, since some stream
  * operations may return their receiver rather than a new stream object, it may
  * not be possible to detect reuse in all cases.
+ *
  * 流对象有一个关闭流的方法并且实现了AutoColoseable接口。但并不是所有的流实例需要在使用后关闭他。通常，只有那些IO通道(比如
  * 那些通过Files.line返回的结果)需要关闭。大多数流由集合，数组或生成函数支持，不需要特殊资源管理。
  * (如果流确实需要关闭，则可以在{@code try} -with-resources语句中声明为资源。）
@@ -192,68 +193,85 @@ public interface Stream<T> extends BaseStream<T, Stream<T>> {
      *                  <a href="package-summary.html#Statelessness">stateless</a>
      *                  predicate to apply to each element to determine if it
      *                  should be included
+     *                  一个无干扰、无状态的断言，应用于决定每个元素是否被包含。
      * @return the new stream
      */
     Stream<T> filter(Predicate<? super T> predicate);
 
     /**
+     *
+     * 返回由应用给定结果组成的流，作用于流中的每个元素。
      * Returns a stream consisting of the results of applying the given
      * function to the elements of this stream.
      *
+     * 这是一个中间操作方法
      * <p>This is an <a href="package-summary.html#StreamOps">intermediate
      * operation</a>.
      *
+     *
      * @param <R> The element type of the new stream
+     *           新的流对象
      * @param mapper a <a href="package-summary.html#NonInterference">non-interfering</a>,
      *               <a href="package-summary.html#Statelessness">stateless</a>
      *               function to apply to each element
+     *               一个无干扰无状态的方法应用于每个元素
      * @return the new stream
      */
     <R> Stream<R> map(Function<? super T, ? extends R> mapper);
 
     /**
+     * 返回由应用给定结果组成的Int类型的流，作用于流中的每个元素。
      * Returns an {@code IntStream} consisting of the results of applying the
      * given function to the elements of this stream.
      *
+     * 这是一个中间操作方法
      * <p>This is an <a href="package-summary.html#StreamOps">
      *     intermediate operation</a>.
      *
      * @param mapper a <a href="package-summary.html#NonInterference">non-interfering</a>,
      *               <a href="package-summary.html#Statelessness">stateless</a>
      *               function to apply to each element
+     *               一个无干扰无状态的方法应用于每个元素
      * @return the new stream
      */
     IntStream mapToInt(ToIntFunction<? super T> mapper);
 
     /**
+     * 返回由应用给定结果组成的Long类型的流，作用于流中的每个元素。
      * Returns a {@code LongStream} consisting of the results of applying the
      * given function to the elements of this stream.
      *
+     * 这是一个中间操作方法
      * <p>This is an <a href="package-summary.html#StreamOps">intermediate
      * operation</a>.
      *
      * @param mapper a <a href="package-summary.html#NonInterference">non-interfering</a>,
      *               <a href="package-summary.html#Statelessness">stateless</a>
      *               function to apply to each element
+     *               一个无干扰无状态的方法应用于每个元素
      * @return the new stream
      */
     LongStream mapToLong(ToLongFunction<? super T> mapper);
 
     /**
+     * 返回由应用给定结果组成的Double类型的流，作用于流中的每个元素。
      * Returns a {@code DoubleStream} consisting of the results of applying the
      * given function to the elements of this stream.
-     *
+     *  这是一个中间操作方法
      * <p>This is an <a href="package-summary.html#StreamOps">intermediate
      * operation</a>.
      *
      * @param mapper a <a href="package-summary.html#NonInterference">non-interfering</a>,
      *               <a href="package-summary.html#Statelessness">stateless</a>
      *               function to apply to each element
+     *               一个无干扰无状态的方法应用于每个元素
      * @return the new stream
      */
     DoubleStream mapToDouble(ToDoubleFunction<? super T> mapper);
 
     /**
+     * 返回包含替换每个元素的结果的流此流包含通过应用生成的映射流的内容提供的到每个元素的映射功能。
+     * 当每个映射的流在她们内容被放置到这个流中时被关闭。如果映射的流为{@code null}而是使用空流。
      * Returns a stream consisting of the results of replacing each element of
      * this stream with the contents of a mapped stream produced by applying
      * the provided mapping function to each element.  Each mapped stream is
@@ -261,39 +279,45 @@ public interface Stream<T> extends BaseStream<T, Stream<T>> {
      * have been placed into this stream.  (If a mapped stream is {@code null}
      * an empty stream is used, instead.)
      *
+     * 这是一个中间操作方法
      * <p>This is an <a href="package-summary.html#StreamOps">intermediate
      * operation</a>.
      *
      * @apiNote
+     * flagMap操作对于一对多的的转换到流的元素是有效的，然后扁平化的结果元素放入新的流中。
      * The {@code flatMap()} operation has the effect of applying a one-to-many
      * transformation to the elements of the stream, and then flattening the
      * resulting elements into a new stream.
      *
      * <p><b>Examples.</b>
-     *
+     * 如果订单是一个支付订单的流，每个支付的订单包含了每一行产品的集合，随后创建出一个在所有订单包含所有项目的流。
      * <p>If {@code orders} is a stream of purchase orders, and each purchase
      * order contains a collection of line items, then the following produces a
      * stream containing all the line items in all the orders:
      * <pre>{@code
      *     orders.flatMap(order -> order.getLineItems().stream())...
      * }</pre>
-     *
+     *  如果path是一个文件的路径，随后就会产出一个包含这个文件的单词的流。
      * <p>If {@code path} is the path to a file, then the following produces a
      * stream of the {@code words} contained in that file:
      * <pre>{@code
      *     Stream<String> lines = Files.lines(path, StandardCharsets.UTF_8);
      *     Stream<String> words = lines.flatMap(line -> Stream.of(line.split(" +")));
      * }</pre>
+     *
+     * 映射函数通过分割行装换成为一个扁平映射，使用简单的正则表达式转换成单词的数组，
+     * 然后通过这个数据创建一个单词的流对象。
      * The {@code mapper} function passed to {@code flatMap} splits a line,
      * using a simple regular expression, into an array of words, and then
      * creates a stream of words from that array.
-     *
+     * 一个新流的元素类型
      * @param <R> The element type of the new stream
      * @param mapper a <a href="package-summary.html#NonInterference">non-interfering</a>,
      *               <a href="package-summary.html#Statelessness">stateless</a>
      *               function to apply to each element which produces a stream
      *               of new values
-     * @return the new stream
+     *               一个无干扰、无状态的功能被应用到每一个创建一个新值的流元素中。
+     * @return the new stream 一个新的流对象
      */
     <R> Stream<R> flatMap(Function<? super T, ? extends Stream<? extends R>> mapper);
 

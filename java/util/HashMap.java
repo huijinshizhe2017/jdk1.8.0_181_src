@@ -37,7 +37,9 @@ import java.util.function.Function;
 import sun.misc.SharedSecrets;
 
 /**
- *
+ * Hash table是基于Map接口实现的。这个实现提供了map所有可选的操作方法，并允许将key和value设置为null值。
+ * HashMap除了异步和允许为null,其他和Hashtable大致相同。这个类并不保证map的顺序。特别指出，它不保证顺序
+ * 随着时间的推移将保持不变。
  * Hash table based implementation of the <tt>Map</tt> interface.  This
  * implementation provides all of the optional map operations, and permits
  * <tt>null</tt> values and the <tt>null</tt> key.  (The <tt>HashMap</tt>
@@ -45,7 +47,9 @@ import sun.misc.SharedSecrets;
  * unsynchronized and permits nulls.)  This class makes no guarantees as to
  * the order of the map; in particular, it does not guarantee that the order
  * will remain constant over time.
- *
+ * 这个实现对于基本的get和put方法提供了恒定时间的性能，确保哈希函数将元素正确分散在存储桶中。
+ * 集合视图上的迭代所需的时间与HashMap实例的“容量”（存储桶数）及其大小（键-值映射数）成正比。
+ * 因此，如果迭代性能很重要，则不要将初始容量设置得过高（或负载因子过低），这一点非常重要。
  * <p>This implementation provides constant-time performance for the basic
  * operations (<tt>get</tt> and <tt>put</tt>), assuming the hash function
  * disperses the elements properly among the buckets.  Iteration over
@@ -55,6 +59,11 @@ import sun.misc.SharedSecrets;
  * capacity too high (or the load factor too low) if iteration performance is
  * important.
  *
+ * 一个HashMap实例有两个影响性能的参数:一个是初始化容量，另外一个是加载因子。
+ * 容量是散列表中的存储桶数，容量只是创建哈希表时的容量。
+ * 负载因子是在自动增加其哈希表容量之前允许哈希表获得的满度的度量。
+ * 当哈希表中的条目数超过负载因子与当前容量的乘积时，哈希表将被重新映射（即内部数据
+ * 重建结构），以使哈希表的存储桶数量约为存储桶数量的两倍。
  * <p>An instance of <tt>HashMap</tt> has two parameters that affect its
  * performance: <i>initial capacity</i> and <i>load factor</i>.  The
  * <i>capacity</i> is the number of buckets in the hash table, and the initial
@@ -66,6 +75,10 @@ import sun.misc.SharedSecrets;
  * structures are rebuilt) so that the hash table has approximately twice the
  * number of buckets.
  *
+ * 作为一般规则，默认的加载因子(0.75)对于时间和空间的消耗提供了一个很好的折中参数。
+ * 较高的值虽然会降低空间的开销，但是却增加了查找成本(反映在HashMap的大多数操作中，包括get和set方法)。
+ * 在设置初始容量时，应考虑map中的预期条目数及其负载系数，以尽量减少再冲操作次数。
+ * 如果初始容量大于由负载因子除以的条目的最大数量，则不会发生任何重散列操作。
  * <p>As a general rule, the default load factor (.75) offers a good
  * tradeoff between time and space costs.  Higher values decrease the
  * space overhead but increase the lookup cost (reflected in most of
@@ -77,6 +90,10 @@ import sun.misc.SharedSecrets;
  * maximum number of entries divided by the load factor, no rehash
  * operations will ever occur.
  *
+ * 如果要将许多映射存储在HashMap实例中，
+ * 则创建具有足够大容量的映射将比使它根据需要增长表的自动重新哈希处理更有效地存储映射。
+ * 请注意，使用许多具有相同{@code hashCode（）}的键是降低任何哈希表性能的肯定方法。
+ * 为了改善影响，当键为{@link Comparable}时，此类可以使用键之间的比较顺序来帮助打破平局。
  * <p>If many mappings are to be stored in a <tt>HashMap</tt>
  * instance, creating it with a sufficiently large capacity will allow
  * the mappings to be stored more efficiently than letting it perform
@@ -86,6 +103,10 @@ import sun.misc.SharedSecrets;
  * are {@link Comparable}, this class may use comparison order among
  * keys to help break ties.
  *
+ * 请注意，此实现未同步。如果多个线程同时访问一个哈希映射，并且至少有一个线程在结构上修改该映射，
+ * 则它必须在外部进行同步。（结构修改是添加或删除一个或多个映射的任何操作；
+ * 仅更改与实例已经包含的键相关联的值并不是结构上的修改。）
+ * 通常通过在自然封装了映射的某个对象上进行同步来实现。
  * <p><strong>Note that this implementation is not synchronized.</strong>
  * If multiple threads access a hash map concurrently, and at least one of
  * the threads modifies the map structurally, it <i>must</i> be
@@ -95,12 +116,18 @@ import sun.misc.SharedSecrets;
  * structural modification.)  This is typically accomplished by
  * synchronizing on some object that naturally encapsulates the map.
  *
+ * 如果不存在这样的对象，则应使用Collections.synchronizedMap方法“包装”map集合。
+ * 最好在创建时完成，以防止意外的非同步访问map集合。
  * If no such object exists, the map should be "wrapped" using the
  * {@link Collections#synchronizedMap Collections.synchronizedMap}
  * method.  This is best done at creation time, to prevent accidental
  * unsynchronized access to the map:<pre>
  *   Map m = Collections.synchronizedMap(new HashMap(...));</pre>
  *
+ * 此类的所有“集合视图方法”返回的迭代器都是快速失败：
+ * 如果在创建迭代器后的任何时间对结构进行了结构修改，则可以通过迭代器自己的remove方法进行任何方式修改，
+ * 迭代器将抛出{@link ConcurrentModificationException}。
+ * 因此，面对并发修改，迭代器会快速干净地失败，而不是冒着在未来不确定的时间冒任意，不确定的行为的风险。
  * <p>The iterators returned by all of this class's "collection view methods"
  * are <i>fail-fast</i>: if the map is structurally modified at any time after
  * the iterator is created, in any way except through the iterator's own
@@ -109,7 +136,9 @@ import sun.misc.SharedSecrets;
  * modification, the iterator fails quickly and cleanly, rather than risking
  * arbitrary, non-deterministic behavior at an undetermined time in the
  * future.
- *
+ * 请注意，迭代器的快速失败行为无法得到保证，因为通常来说，在存在不同步的并发修改的情况下，
+ * 不可能做出任何严格的保证。快速失败的迭代器会尽最大努力抛出ConcurrentModificationException。
+ * 因此，编写依赖于此异常的程序的正确性是错误的：迭代器的快速失败行为应仅用于检测错误。
  * <p>Note that the fail-fast behavior of an iterator cannot be guaranteed
  * as it is, generally speaking, impossible to make any hard guarantees in the
  * presence of unsynchronized concurrent modification.  Fail-fast iterators
@@ -143,7 +172,12 @@ public class HashMap<K,V> extends AbstractMap<K,V>
 
     /*
      * Implementation notes.
-     *
+     * 此映射通常用作分类（存储桶）的哈希表，但是当bin太大时，它们将转换为 TreeNode，
+     * 每个的结构都类似于java.util.TreeMap中的结构。大多数方法尝试使用普通的垃圾桶，
+     * 但是在适用时中继到TreeNode方法（只需通过检查节点的instance）。
+     * TreeNodes的bin可以像其他任何遍历一样使用，但在人口过多时还支持更快的查找。
+     * 但是，由于正常使用中的绝大多数垃圾箱没有人口过多，
+     * 因此在使用表方法的过程中可能会延迟检查是否存在树状垃圾箱。
      * This map usually acts as a binned (bucketed) hash table, but
      * when bins get too large, they are transformed into bins of
      * TreeNodes, each structured similarly to those in
@@ -154,7 +188,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * when overpopulated. However, since the vast majority of bins in
      * normal use are not overpopulated, checking for existence of
      * tree bins may be delayed in the course of table methods.
-     *
+     * 
      * Tree bins (i.e., bins whose elements are all TreeNodes) are
      * ordered primarily by hashCode, but in the case of ties, if two
      * elements are of the same "class C implements Comparable<C>",
