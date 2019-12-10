@@ -147,6 +147,25 @@ import sun.misc.SharedSecrets;
  * exception for its correctness: <i>the fail-fast behavior of iterators
  * should be used only to detect bugs.</i>
  *
+ * 底层基于散列算法实现，散列算法分为散列再探测和拉链式，HashMap-->拉链式
+ * HashMap并不保证键值对的顺序，这意味着在进行某些操作后，键值对的顺序可能会发生变化。
+ * HashMap的key必须是immutable(String、Integer)的，key可以用自定义的对象，但是自实现的类必须重写equals
+ * 和hashcode方法
+ *
+ * JDK1.8HashMap的优化：
+ * 1.引入红黑树解决过长链表效率低的问题
+ * 2.重写resize方法，移除了alternative hashing相关方法，避免重新计算键的hash
+ *
+ * 哈希冲突的解决方法：
+ * 1.开放定址法(线性探测再散列，二次探测再散列，伪随机探测再散列)
+ * 2.再哈希法，就是在原hash函数的基础，再次执行hash算法
+ * 3.链地址法，各种处理哈希碰撞的方法中，这种最简单
+ * 4.建立一个公共溢出区
+ *
+ * HashMap的线程不安全体现在：
+ * 1.多线程同时put添加元素会丢失元素
+ * 2.多线程同时扩容会造成死循环
+ *
  * <p>This class is a member of the
  * <a href="{@docRoot}/../technotes/guides/collections/index.html">
  * Java Collections Framework</a>.
@@ -521,6 +540,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * 此哈希映射在结构上已被修改的次数结构修改是那些更改哈希映射中的映射数或以其他方式修改其内部结构
      * （例如，rehash）的次数。此字段用于使HashMap的集合视图上的迭代器快速失败。
      * （参见ConcurrentModificationException）。
+     * fail-fast机制
      * The number of times this HashMap has been structurally modified
      * Structural modifications are those that change the number of mappings in
      * the HashMap or otherwise modify its internal structure (e.g.,
