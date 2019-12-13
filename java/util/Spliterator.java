@@ -30,13 +30,20 @@ import java.util.function.IntConsumer;
 import java.util.function.LongConsumer;
 
 /**
+ * 一个用于转换或者划分源元素的对象。被分割迭代器转换的源元素可能包括一个数组、一个集合、一个IO管道或者
+ * 一个生成的方法。
  * An object for traversing and partitioning elements of a source.  The source
  * of elements covered by a Spliterator could be, for example, an array, a
  * {@link Collection}, an IO channel, or a generator function.
  *
+ * 一个分割器可能遍历个别的元素(tryAdvance)或者序列化一个块(forEachRemaining)
  * <p>A Spliterator may traverse elements individually ({@link
  * #tryAdvance tryAdvance()}) or sequentially in bulk
  * ({@link #forEachRemaining forEachRemaining()}).
+ *
+ * 分割迭代器还可以将其些元素（使用{@link #trySplit}）划分为另一个分割迭代器，以用于可能的并行操作。
+ * 使用分割迭代器的操作无法拆分，或者以高度不平衡或低效率的方式拆分，因此不太可能从并行性中受益。
+ * 遍历和分割额外的元素；每个分割器仅对单个批量计算有用。
  *
  * <p>A Spliterator may also partition off some of its elements (using
  * {@link #trySplit}) as another Spliterator, to be used in
@@ -46,6 +53,13 @@ import java.util.function.LongConsumer;
  * and splitting exhaust elements; each Spliterator is useful for only a single
  * bulk computation.
  *
+ * 一个迭代分割器也能从{@link #ORDERED}, {@link #DISTINCT}, {@link #SORTED}, {@link #SIZED},
+ * {@link #NONNULL},{@link #IMMUTABLE}, {@link #CONCURRENT}, and {@link #SUBSIZED}获取一系列的
+ *  架构、源和元素的特征信息。分割迭代器客户端可以使用它们来控制、专门化或简化计算。
+ *  例如，{@link Collection}的分割迭代器将输出{@code size}，
+ *  {@link Set}的分割迭代器将输出{@code DISTINCT}，
+ *  {@link SortedSet}的分割迭代器将输出{@code SORTED}。
+ *  特征被报告为一个简单的联合比特集。
  * <p>A Spliterator also reports a set of {@link #characteristics()} of its
  * structure, source, and elements from among {@link #ORDERED},
  * {@link #DISTINCT}, {@link #SORTED}, {@link #SIZED}, {@link #NONNULL},
@@ -56,7 +70,9 @@ import java.util.function.LongConsumer;
  * {@code DISTINCT}, and a Spliterator for a {@link SortedSet} would also
  * report {@code SORTED}.  Characteristics are reported as a simple unioned bit
  * set.
- *
+ * 一些特征集合通常情况还包含一些方法的行为。例如，如果特征值为{@code ORDERED},
+ * 遍历方法必须符合他们文档的排序规则。
+ * 新的特征值也可能之后被定义，因此，实现者不应该给未列出的值赋予意义。
  * Some characteristics additionally constrain method behavior; for example if
  * {@code ORDERED}, traversal methods must conform to their documented ordering.
  * New characteristics may be defined in the future, so implementors should not

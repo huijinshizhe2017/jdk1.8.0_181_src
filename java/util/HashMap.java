@@ -75,10 +75,10 @@ import sun.misc.SharedSecrets;
  * structures are rebuilt) so that the hash table has approximately twice the
  * number of buckets.
  *
- * 作为一般规则，默认的加载因子(0.75)对于时间和空间的消耗提供了一个很好的折中参数。
+ * 通常情况下，默认的加载因子(0.75)对于时间和空间的消耗提供了一个很好的折中参数。
  * 较高的值虽然会降低空间的开销，但是却增加了查找成本(反映在HashMap的大多数操作中，包括get和set方法)。
- * 在设置初始容量时，应考虑map中的预期条目数及其负载系数，以尽量减少再冲操作次数。
- * 如果初始容量大于由负载因子除以的条目的最大数量，则不会发生任何重散列操作。
+ * 在设置初始容量时，应考虑map中的预期条目数及其负载系数，以尽量减少rehash操作次数。
+ * 如果初始容量大于最大条目数/负载因子，则不会发生任何hash操作。
  * <p>As a general rule, the default load factor (.75) offers a good
  * tradeoff between time and space costs.  Higher values decrease the
  * space overhead but increase the lookup cost (reflected in most of
@@ -741,7 +741,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
          */
         Node<K,V>[] tab; Node<K,V> first, e; int n; K k;
         if ((tab = table) != null && (n = tab.length) > 0 &&
-             //???为什么(n-1)&hash为第一个元素
+             //???为什么(n-1)&hash为第一个元素，解决了，
             (first = tab[(n - 1) & hash]) != null) {
             //监测hash是否对应第一个节点，如果是，直接返回。
             //这里通过当前节点的hash值是否匹配，以及key的匹配确定value值。
@@ -827,6 +827,11 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         //这里为什么要n-1:是因为保证这个值转换为2进制所有位都为1(tab的长度为2次幂)
         //从而减少Hash冲突。
         //如果查找到当前桶没有元素，则这个桶的第一个元素就是此元素。
+        //(n-1) & hash：取(n-1)的模，这是2^1-1(所有位数都是1)自带的一个特性。
+        // 0000 0001 1111
+        // 1010 1101 1001
+        //因为是与的操作，所以上行0位的都为0,1位的按照下侧实际的显示。通过这个运算，得到小于1 1111的值
+        //也就是2^4的模数。
         if ((p = tab[i = (n - 1) & hash]) == null)
             tab[i] = newNode(hash, key, value, null);
 
@@ -911,43 +916,113 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         int oldThr = threshold;
 
         /*
-         *初始化新的容量和阈值都为0
+         * 初始化新的容量和阈值都为0
          */
         int newCap, newThr = 0;
         if (oldCap > 0) {
+            //如果容量大于最大值，则容量按照最大值，阈值也为最大值，
             if (oldCap >= MAXIMUM_CAPACITY) {
+                //Integer.MAX_VALUE:2^31
                 threshold = Integer.MAX_VALUE;
                 return oldTab;
             }
+            //新容量通过左移扩大一倍容量。此时新容量如果小于最大容量或者旧容量大于默认初始值，则阈值同样左移1位
             else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
                      oldCap >= DEFAULT_INITIAL_CAPACITY)
                 newThr = oldThr << 1; // double threshold
         }
-        else if (oldThr > 0) // initial capacity was placed in threshold
+        //下面两个分支为旧容量为0，
+        //如果指定了初始阈值，则将新容量定位阈值
+        else if (oldThr > 0)
+            // initial capacity was placed in threshold
             newCap = oldThr;
-        else {               // zero initial threshold signifies using defaults
+        //没有指定任何参数
+        //新容量和阈值使用默认值
+        //新容量:16
+        //阈值:16*0.75=12
+        else {
+            // zero initial threshold signifies using defaults
             newCap = DEFAULT_INITIAL_CAPACITY;
             newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
         }
+        //ft：阈值，即当前容量*负载因子
+        //进入此条件是newCap>MAXIMUM_CAPACITY,此时阈值为最大值容量*加载因子
         if (newThr == 0) {
             float ft = (float)newCap * loadFactor;
+            /*
+             * 如果新的容量小于限定的最大容量，并且通过计算得到的阈值小于规定的最大容量，则使用计算值
+             * 否则返回阈值最大值（2^31-1）
+             */
             newThr = (newCap < MAXIMUM_CAPACITY && ft < (float)MAXIMUM_CAPACITY ?
                       (int)ft : Integer.MAX_VALUE);
         }
+
         threshold = newThr;
         @SuppressWarnings({"rawtypes","unchecked"})
+                //重新创建一个桶列队
             Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
         table = newTab;
+        //如果oldTab有数据，则需要复制到新桶列队中
         if (oldTab != null) {
             for (int j = 0; j < oldCap; ++j) {
                 Node<K,V> e;
                 if ((e = oldTab[j]) != null) {
                     oldTab[j] = null;
+                    //当前桶只有一个元素
                     if (e.next == null)
+                        //将e重新制定到新数组的下标
                         newTab[e.hash & (newCap - 1)] = e;
+                    //如果是红黑树
                     else if (e instanceof TreeNode)
                         ((TreeNode<K,V>)e).split(this, newTab, j, oldCap);
+                    //如果是链式表
                     else { // preserve order
+                        //loHead和loTail两个节点分别记录不需要移动的链表的头部和尾部，
+                        // hiHead和hiTail分别记录需要移动的链表头部和尾部
+                        //这里不变的为通过计算后还在当前的桶中，
+                        //变的情况是不在当前桶，换为另外一个桶总。
+                        /*
+                         * 首先我们要明确哪些节点需要移动，哪些不需要移动，哪些系统的会移动到什么位置。
+                         * 假设旧容量为16，key所对应的hash值为7
+                         * 1111 1111
+                         * 0000 0111
+                         * ----------
+                         * 7
+                         * 新容量为32，key所对应的hash值为7
+                         * 1111 1111 1111 1111
+                         * 0000 0000 0000 0111
+                         * -------------------
+                         * 7
+                         * =========================================
+                         * 假设旧容量为16，key所对应的hash值为20
+                         * 0000 0000 1111(16-1=15)
+                         * 0000 0001 0100
+                         * --------------
+                         * 0000 0000 0100
+                         * --------------
+                         * 4
+                         * 新容量为32，key所对应的hash值为20
+                         * 0000 0001 1111(31)
+                         * 0000 0001 0100
+                         * --------------
+                         * 20
+                         * 规律:也就是旧的余数+旧的容量(16+4=20)
+                         * =======================================
+                         *
+                         * (e.hash & oldCap) == 0[解析]
+                         * 假设旧容量为16，key所对应的hash值为7
+                         * 0001 0000
+                         * 0000 0111
+                         * ----------- &
+                         * 0
+                         * 按照逻辑为不动的节点，在新的数组中位置为7
+                         *
+                         * 假设旧容量为16，key所对应的hash值为20
+                         * 0001 0000
+                         * 0001 0100
+                         * ---------
+                         * 不等于0;需要移动
+                         */
                         Node<K,V> loHead = null, loTail = null;
                         Node<K,V> hiHead = null, hiTail = null;
                         Node<K,V> next;
@@ -968,10 +1043,12 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                                 hiTail = e;
                             }
                         } while ((e = next) != null);
+                        //不移动的节点
                         if (loTail != null) {
                             loTail.next = null;
                             newTab[j] = loHead;
                         }
+                        //需要移动的节点原来的位置+旧的容量
                         if (hiTail != null) {
                             hiTail.next = null;
                             newTab[j + oldCap] = hiHead;
