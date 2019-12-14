@@ -78,6 +78,13 @@ import java.util.function.LongConsumer;
  * New characteristics may be defined in the future, so implementors should not
  * assign meanings to unlisted values.
  *
+ * 不报告{@code IMMUTABLE}或{@code CONCURRENT}的分割迭代器应该有一个文档化的策略：
+ * 当分割迭代器绑定到元素源时；以及在绑定后元素源的结构干扰的监测。
+ * 后期绑定分割迭代器在第一次遍历、第一次拆分或第一次查询估计大小时绑定到元素源，而不是在创建分割迭代器时绑定。
+ * 非后期绑定的分割迭代器在构造或首次调用任何方法时绑定到元素源。在绑定之前对源所做的修改将在遍历分割迭代器时反映出来。
+ * 绑定之后，如果检测到结构干扰，分割迭代器应该尽最大努力抛出{@link ConcurrentModificationException}。
+ * 分割迭代器执行的此种操作称为fail-fast(快速失败)。分割迭代器的批量遍历方法（{@link#forEachRemaining forEachRemaining（）}）
+ * 可以在遍历所有元素之后优化遍历并检查结构干扰，而不是检查每个元素并立即失败。
  * <p><a name="binding">A Spliterator that does not report {@code IMMUTABLE} or
  * {@code CONCURRENT} is expected to have a documented policy concerning:
  * when the spliterator <em>binds</em> to the element source; and detection of
@@ -96,6 +103,9 @@ import java.util.function.LongConsumer;
  * after all elements have been traversed, rather than checking per-element and
  * failing immediately.
  *
+ * 拆分器可以通过{@link#estimateSize}方法估计剩余元素的数量。
+ * 理想情况下，正如特征{@link#size}所反映的，这个值正好对应于成功遍历中遇到的元素数。
+ * 然而，即使不完全知道，估计值对于在源上执行的操作仍然有用，例如帮助确定进一步分割还是按顺序遍历剩余元素更可取。
  * <p>Spliterators can provide an estimate of the number of remaining elements
  * via the {@link #estimateSize} method.  Ideally, as reflected in characteristic
  * {@link #SIZED}, this value corresponds exactly to the number of elements
@@ -104,6 +114,14 @@ import java.util.function.LongConsumer;
  * being performed on the source, such as helping to determine whether it is
  * preferable to split further or traverse the remaining elements sequentially.
  *
+ * 尽管分割迭代器在并行算法中有着明显的实用性，但它并不一定是线程安全的；
+ * 相反，使用分割迭代器的并行算法的实现应该确保分割迭代器一次只能由一个线程使用。
+ * 这通常很容易通过串行线程限制实现，这通常是通过递归分解工作的典型并行算法的自然结果。
+ * 调用{@link#trySplit()}的线程可以将返回的拆分器移交给另一个线程，该线程又可以遍历或进一步拆分该拆分器。
+ * 如果两个或多个线程同时在同一个拆分器上操作，则拆分和遍历的行为是未定义的。
+ * 如果原始线程将拆分器交给另一个线程进行处理，
+ * 则最好在使用{@link#tryAdvance(Consumer) tryAdvance()}使用任何元素之前进行切换，
+ * 因为某些保证(例如{@code size}拆分器的{@link#estimateSize()}的准确性)仅在遍历开始之前有效。
  * <p>Despite their obvious utility in parallel algorithms, spliterators are not
  * expected to be thread-safe; instead, implementations of parallel algorithms
  * using spliterators should ensure that the spliterator is only used by one
@@ -119,6 +137,17 @@ import java.util.function.LongConsumer;
  * tryAdvance()}, as certain guarantees (such as the accuracy of
  * {@link #estimateSize()} for {@code SIZED} spliterators) are only valid before
  * traversal has begun.
+ *
+ * 分割迭代器专门为{@link of int}、{@link of long long}和{@link of double double}值提供的原始子类型。
+ * {@link Spliterator#tryAdvance(java.util.function.Consumer)}和
+ * {@link Spliterator#forEachRemaining(java.util.function.Consumer)}默认的子类型实现到其相应包装类的实例。
+ * 这样的拳击可能会破坏使用原始专业化所获得的任何性能优势。为了避免装箱，应使用相应的基于原语的方法。
+ * 例如，{@link Spliterator.OfInt#tryAdvance(java.util.function.IntConsumer)}
+ * 和{@link Spliterator.OfInt#forEachRemaining(java.util.function.IntConsumer)}
+ * 应优先于{@link Spliterator.OfInt#tryAdvance(java.util.function.Consumer)}
+ * 和{@link Spliterator.OfInt#forEachRemaining(java.util.function.Consumer)}。
+ * 使用基于装箱的方法遍历原始值{@link #tryAdvance tryAdvance()}
+ * 和{@link #forEachRemaining(java.util.function.Consumer) forEachRemaining()}不会影响到转换为装箱值的值的顺序。
  *
  * <p>Primitive subtype specializations of {@code Spliterator} are provided for
  * {@link OfInt int}, {@link OfLong long}, and {@link OfDouble double} values.
@@ -140,6 +169,7 @@ import java.util.function.LongConsumer;
  * does not affect the order in which the values, transformed to boxed values,
  * are encountered.
  *
+ * 像Interator的分割迭代器会遍历源中的每一个元素。
  * @apiNote
  * <p>Spliterators, like {@code Iterator}s, are for traversing the elements of
  * a source.  The {@code Spliterator} API was designed to support efficient
