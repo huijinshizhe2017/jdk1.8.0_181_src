@@ -26,9 +26,14 @@
 package java.util;
 
 /**
+ * 当修改并不允许的情况下，被声称并发修改对象的方法将会抛出此异常。
  * This exception may be thrown by methods that have detected concurrent
  * modification of an object when such modification is not permissible.
  * <p>
+ *
+ *例如，通常不允许一个线程修改Collection而另一个线程对其进行迭代。
+ * 通常，在这些情况下，迭代的结果是不确定的。如果检测到此行为，则某些Iterator实现（包括JRE提供的所有通用集合实现的实现）可能会选择抛出此异常。
+ * 执行此操作的迭代器称为快速失败迭代器，因为它们会快速干净地失败，而不是在未来的不确定时间内冒任意不确定的行为的风险。
  * For example, it is not generally permissible for one thread to modify a Collection
  * while another thread is iterating over it.  In general, the results of the
  * iteration are undefined under these circumstances.  Some Iterator
@@ -38,6 +43,9 @@ package java.util;
  * as they fail quickly and cleanly, rather that risking arbitrary,
  * non-deterministic behavior at an undetermined time in the future.
  * <p>
+ *
+ * 请注意，此异常并不总是表示对象已被其他线程同时修改。如果单个线程发出违反对象约定的方法调用序列，则该对象可能会抛出此异常。
+ * 例如，如果线程在使用快速失败迭代器迭代集合时直接修改了集合，则迭代器将抛出此异常。
  * Note that this exception does not always indicate that an object has
  * been concurrently modified by a <i>different</i> thread.  If a single
  * thread issues a sequence of method invocations that violates the
@@ -46,6 +54,9 @@ package java.util;
  * iterating over the collection with a fail-fast iterator, the iterator
  * will throw this exception.
  *
+ * 请注意，不能保证快速故障行为，因为通常来说，在存在不同步的并发修改的情况下，不可能做出任何严格的保证。
+ * 失败快速操作会尽最大努力抛出{@code ConcurrentModificationException}。
+ * 因此，编写依赖于此异常的程序的正确性是错误的：{@code ConcurrentModificationException}应该仅用于检测错误。
  * <p>Note that fail-fast behavior cannot be guaranteed as it is, generally
  * speaking, impossible to make any hard guarantees in the presence of
  * unsynchronized concurrent modification.  Fail-fast operations

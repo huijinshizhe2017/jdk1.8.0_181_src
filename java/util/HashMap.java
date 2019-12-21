@@ -1306,6 +1306,10 @@ public class HashMap<K,V> extends AbstractMap<K,V>
     }
 
     /**
+     * 返回此映射中包含的映射的{@link Set}视图。该集合由地图支持，因此对地图的更改会反映在集合中，反之亦然。
+     * 如果在进行集合迭代时修改了映射（除非通过迭代器自己的remove操作或通过迭代器返回的映射条目上的setValue操作），则迭代的结果是不确定的。
+     * 该集合支持元素删除，该元素通过Iterator.remove，Set.remove，removeAll，retainAll和clear操作从映射中删除相应的映射。
+     * 它不支持add或addAll操作。
      * Returns a {@link Set} view of the mappings contained in this map.
      * The set is backed by the map, so changes to the map are
      * reflected in the set, and vice-versa.  If the map is modified

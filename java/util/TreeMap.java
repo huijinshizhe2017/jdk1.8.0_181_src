@@ -31,16 +31,25 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 /**
+ * 基于{@link NavigableMap}实现的红黑树。这个map是通过他们的key的Comparable接口的自然排序方式，
+ * 或者是在依赖使用构造方法创建map时候的Comparator排序。
  * A Red-Black tree based {@link NavigableMap} implementation.
  * The map is sorted according to the {@linkplain Comparable natural
  * ordering} of its keys, or by a {@link Comparator} provided at map
  * creation time, depending on which constructor is used.
  *
+ * 这个实现针对{@code containsKey}, {@code get}, {@code put} and {@code remove}操作保证了时间复杂度为log(n)。
+ * 算法是对Cormen，Leiserson和Rivest算法简介中的算法的改进。
  * <p>This implementation provides guaranteed log(n) time cost for the
  * {@code containsKey}, {@code get}, {@code put} and {@code remove}
  * operations.  Algorithms are adaptations of those in Cormen, Leiserson, and
  * Rivest's <em>Introduction to Algorithms</em>.
  *
+ * 请注意，如果一个排序的map要正确实现{@code Map}接口，则与任何已排序的映射一样，树映射所维护的顺序以​​及是否提供显式比较器必须与{@code equals}一致。
+ * (有关对等于的精确定义，请参见{@code Comparable}或{@code Comparator}。)之所以这样，是因为{@code Map}接口是根据{@code equals}操作定义的，
+ * 但是是经过排序的map使用其{@code compareTo}（或{@code compare}）方法执行所有键比较，
+ * 因此，从已排序映射的角度来看，此方法认为相等的两个键是相等的。即使排序的映射与{@code equals}不一致，其行为也已明确定义。
+ * 它只是无法遵守{@code Map}接口的一般约定。
  * <p>Note that the ordering maintained by a tree map, like any sorted map, and
  * whether or not an explicit comparator is provided, must be <em>consistent
  * with {@code equals}</em> if this sorted map is to correctly implement the
@@ -54,6 +63,9 @@ import java.util.function.Consumer;
  * inconsistent with {@code equals}; it just fails to obey the general contract
  * of the {@code Map} interface.
  *
+ * 请注意，此实现未同步。如果多个线程同时访问一个映射，并且至少有一个线程在结构上修改该映射，则必须在外部对其进行同步。
+ * （结构修改是添加或删除一个或多个映射的任何操作；仅更改与现有键关联的值不是结构修改。）
+ * 通常通过在自然封装了映射的某个对象上进行同步来完成此操作。
  * <p><strong>Note that this implementation is not synchronized.</strong>
  * If multiple threads access a map concurrently, and at least one of the
  * threads modifies the map structurally, it <em>must</em> be synchronized
@@ -62,12 +74,20 @@ import java.util.function.Consumer;
  * with an existing key is not a structural modification.)  This is
  * typically accomplished by synchronizing on some object that naturally
  * encapsulates the map.
+ * 如果不存在这样的对象，则应使用{@link Collections＃synchronizedSortedMap Collections.synchronizedSortedMap}方法“包装”map。
+ * 最好在创建时完成，以防止意外的非同步访问map:
+ *      SortedMap m = Collections.synchronizedSortedMap(new TreeMap(...))
+ *
  * If no such object exists, the map should be "wrapped" using the
  * {@link Collections#synchronizedSortedMap Collections.synchronizedSortedMap}
  * method.  This is best done at creation time, to prevent accidental
  * unsynchronized access to the map: <pre>
  *   SortedMap m = Collections.synchronizedSortedMap(new TreeMap(...));</pre>
  *
+ * 由此类的所有“集合视图方法”返回的集合的{@code iterator}方法返回的迭代器是快速失败的：
+ * 如果在创建迭代器后的任何时间对结构进行结构修改，则除了迭代器自己的{@code remove}方法，
+ * 则迭代器将抛出{@link ConcurrentModificationException}。因此，面对并发修改，迭代器会快速干净地失败，
+ * 而不会在未来的不确定时间内冒任意，不确定的行为的风险。
  * <p>The iterators returned by the {@code iterator} method of the collections
  * returned by all of this class's "collection view methods" are
  * <em>fail-fast</em>: if the map is structurally modified at any time after
@@ -77,6 +97,9 @@ import java.util.function.Consumer;
  * modification, the iterator fails quickly and cleanly, rather than risking
  * arbitrary, non-deterministic behavior at an undetermined time in the future.
  *
+ * 请注意，迭代器的快速失败行为无法得到保证，因为通常来说，在存在不同步的并发修改的情况下，不可能做出任何严格的保证。
+ * 快速失败的迭代器会尽最大努力抛出{@code ConcurrentModificationException}。因此，编写依赖于此异常的程序以确保其正确性是错误的：
+ * 迭代器的快速失败行为应仅用于检测错误。
  * <p>Note that the fail-fast behavior of an iterator cannot be guaranteed
  * as it is, generally speaking, impossible to make any hard guarantees in the
  * presence of unsynchronized concurrent modification.  Fail-fast iterators
@@ -85,6 +108,8 @@ import java.util.function.Consumer;
  * exception for its correctness:   <em>the fail-fast behavior of iterators
  * should be used only to detect bugs.</em>
  *
+ * 此类中的方法返回的所有{@code Map.Entry}对及其视图均表示生成映射时的快照。它们不支持{@code ntry.setValue}方法。
+ * （不过请注意，可以在关联的map使用{@code put}更改映射信心。
  * <p>All {@code Map.Entry} pairs returned by methods in this class
  * and its views represent snapshots of mappings at the time they were
  * produced. They do <strong>not</strong> support the {@code Entry.setValue}
@@ -113,6 +138,7 @@ public class TreeMap<K,V>
     implements NavigableMap<K,V>, Cloneable, java.io.Serializable
 {
     /**
+     * 比较器在这个treeMap中用于保持排序，如果keys是通过自然排序，则为null.
      * The comparator used to maintain order in this tree map, or
      * null if it uses the natural ordering of its keys.
      *
@@ -120,19 +146,27 @@ public class TreeMap<K,V>
      */
     private final Comparator<? super K> comparator;
 
+    /**
+     * 根节点
+     */
     private transient Entry<K,V> root;
 
     /**
+     * 这个树中实体的个数
      * The number of entries in the tree
      */
     private transient int size = 0;
 
     /**
+     * 在这棵树中结构被修改的次数
      * The number of structural modifications to the tree.
      */
     private transient int modCount = 0;
 
     /**
+     * 构造一个新的、空的treeMap,并使用keys的自然排序。所有的keys在插入map的时候必须实现{@link Comparable}接口。
+     * 另外，所有这些keys必须相互比较:{@code k1.compareTo(k2)}对于这个map中的任何{@code k1}和{@code k2}禁止抛出类型转换异常{@code ClassCastException}
+     * 如果用户违背这条约束(例如，用户试图将一个string类型的key放入一个key为Integers的map中)试图去将一个key插入这个map,将会抛出类型转换异常。
      * Constructs a new, empty tree map, using the natural ordering of its
      * keys.  All keys inserted into the map must implement the {@link
      * Comparable} interface.  Furthermore, all such keys must be
@@ -149,6 +183,9 @@ public class TreeMap<K,V>
     }
 
     /**
+     * 通过给定的比较器构建一个新的、空的treeMap.所有的keys必须通过给定的比较器以相互比较的方式插入的这个map中:
+     * {@code comparator.compare(k1,k2)}对于这个map中的任意{@code k1} and {@code k2}禁止抛出类型转换异常。
+     * 如果用户违背这条约束(例如，用户试图将一个string类型的key放入一个key为Integers的map中)试图去将一个key插入这个map,将会抛出类型转换异常。
      * Constructs a new, empty tree map, ordered according to the given
      * comparator.  All keys inserted into the map must be <em>mutually
      * comparable</em> by the given comparator: {@code comparator.compare(k1,
@@ -161,12 +198,16 @@ public class TreeMap<K,V>
      * @param comparator the comparator that will be used to order this map.
      *        If {@code null}, the {@linkplain Comparable natural
      *        ordering} of the keys will be used.
+     *        一个用于排序此map的比较器。如果为null,则所有的keys将使用默认的比较器进行排序。
      */
     public TreeMap(Comparator<? super K> comparator) {
         this.comparator = comparator;
     }
 
     /**
+     * 通过给定的map构建一个新的包含想用映射的treeMap，通过这些keys的自然排序进行排序。
+     * 所有插入这个map的keys必须实现{@link Comparable}接口。另外，这个keys必须两两相互比较:对于这个map中的任何keys{@code k1} and {@code k2}，
+     * 都不能抛出类型转换异常。这个方法的复杂度为nlog(n).
      * Constructs a new tree map containing the same mappings as the given
      * map, ordered according to the <em>natural ordering</em> of its keys.
      * All keys inserted into the new map must implement the {@link
@@ -176,9 +217,12 @@ public class TreeMap<K,V>
      * {@code k2} in the map.  This method runs in n*log(n) time.
      *
      * @param  m the map whose mappings are to be placed in this map
+     *           一个map的映射被替换到这个map中。
      * @throws ClassCastException if the keys in m are not {@link Comparable},
      *         or are not mutually comparable
+     *         如果在m中的这些keys并不是{@link Comparable}或者没有相互比较则抛出类型转换异常。
      * @throws NullPointerException if the specified map is null
+     *                               如果map为null,则抛出空指针异常。
      */
     public TreeMap(Map<? extends K, ? extends V> m) {
         comparator = null;
@@ -186,13 +230,15 @@ public class TreeMap<K,V>
     }
 
     /**
+     * 使用与给定排序的map相同的比较器构件一个新的包含相同映射的treeMap。这个方法线性运行。
      * Constructs a new tree map containing the same mappings and
      * using the same ordering as the specified sorted map.  This
      * method runs in linear time.
      *
      * @param  m the sorted map whose mappings are to be placed in this map,
      *         and whose comparator is to be used to sort this map
-     * @throws NullPointerException if the specified map is null
+     *           排序map的映射关系替换到新的map中，并且使用当前map的比较器进行比较。
+     * @throws NullPointerException if the specified map is null 如果指定的map为null则抛出异常。
      */
     public TreeMap(SortedMap<K, ? extends V> m) {
         comparator = m.comparator();
@@ -207,6 +253,7 @@ public class TreeMap<K,V>
     // Query Operations
 
     /**
+     * 返回这个map中key-value映射的数量
      * Returns the number of key-value mappings in this map.
      *
      * @return the number of key-value mappings in this map
@@ -216,23 +263,30 @@ public class TreeMap<K,V>
     }
 
     /**
+     * 如果这个map中包含指定key的映射则返回true.
      * Returns {@code true} if this map contains a mapping for the specified
      * key.
      *
-     * @param key key whose presence in this map is to be tested
+     * @param key key whose presence in this map is to be tested 那些在这个map中呈现的key被测试。
      * @return {@code true} if this map contains a mapping for the
      *         specified key
+     *         如果这个map中包含指定key的映射则返回true.
      * @throws ClassCastException if the specified key cannot be compared
      *         with the keys currently in the map
+     *         如果给定的key与当前map的key类型不匹配的情况下抛出此异常。
      * @throws NullPointerException if the specified key is null
      *         and this map uses natural ordering, or its comparator
      *         does not permit null keys
+     *         如果给定key为null并且这个map使用自然排序或者他们比较器不允许空值的情况下抛出空指针异常。
      */
     public boolean containsKey(Object key) {
         return getEntry(key) != null;
     }
 
     /**
+     * 如果这个map通过给定的value映射一个或者多个key则返回true.
+     * 正常情况下，当且仅当这个map包含至少一个映射关系到value则返回true{@code (value==null ? v==null : value.equals(v))}.
+     * 这个操作可能对于许多实现根据map大小需要线性的时间。
      * Returns {@code true} if this map maps one or more keys to the
      * specified value.  More formally, returns {@code true} if and only if
      * this map contains at least one mapping to a value {@code v} such
@@ -240,8 +294,8 @@ public class TreeMap<K,V>
      * operation will probably require time linear in the map size for
      * most implementations.
      *
-     * @param value value whose presence in this map is to be tested
-     * @return {@code true} if a mapping to {@code value} exists;
+     * @param value value whose presence in this map is to be tested 这个map中被测试使用的value值
+     * @return {@code true} if a mapping to {@code value} exists; 如果映射中存在value则返回true,否则返回false.
      *         {@code false} otherwise
      * @since 1.2
      */
