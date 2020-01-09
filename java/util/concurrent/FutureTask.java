@@ -37,6 +37,9 @@ package java.util.concurrent;
 import java.util.concurrent.locks.LockSupport;
 
 /**
+ * 可取消的异步计算。此类提供{@link Future}的基本实现，其中包含启动和取消计算，查询以查看计算是否完成以及检索计算结果的方法。
+ * 只有在计算完成后才能检索结果；如果计算尚未完成，则{@code get}方法将阻塞。
+ * 一旦计算完成，就不能重新开始或取消计算(除非使用{@link #runAndReset}调用计算)。
  * A cancellable asynchronous computation.  This class provides a base
  * implementation of {@link Future}, with methods to start and cancel
  * a computation, query to see if the computation is complete, and
@@ -47,11 +50,14 @@ import java.util.concurrent.locks.LockSupport;
  * or cancelled (unless the computation is invoked using
  * {@link #runAndReset}).
  *
+ * {@code FutureTask}可以用于包装{@link Callable}或{@link Runnable}对象。由于{@code FutureTask}实现了{@code Runnable}，
+ * 因此可以将{@code FutureTask}提交给{@link Executor}以便执行。
  * <p>A {@code FutureTask} can be used to wrap a {@link Callable} or
  * {@link Runnable} object.  Because {@code FutureTask} implements
  * {@code Runnable}, a {@code FutureTask} can be submitted to an
  * {@link Executor} for execution.
  *
+ * 除了用作独立类之外，此类还提供{@code protected}功能，这些功能在创建自定义任务类时可能很有用。
  * <p>In addition to serving as a standalone class, this class provides
  * {@code protected} functionality that may be useful when creating
  * customized task classes.
@@ -59,9 +65,12 @@ import java.util.concurrent.locks.LockSupport;
  * @since 1.5
  * @author Doug Lea
  * @param <V> The result type returned by this FutureTask's {@code get} methods
+ *           此FutureTask的{@code get}方法返回的结果类型
  */
 public class FutureTask<V> implements RunnableFuture<V> {
     /*
+     *修订说明：这与依赖AbstractQueuedSynchronizer的此类的早期版本不同，主要是为了避免用户对取消比赛期间保留中断状态感到惊讶。
+     * 当前设计中的同步控制依赖于通过CAS更新的“状态”字段来跟踪完成情况，以及一个简单的Treiber堆栈来保存等待线程。
      * Revision notes: This differs from previous versions of this
      * class that relied on AbstractQueuedSynchronizer, mainly to
      * avoid surprising users about retaining interrupt status during
@@ -69,11 +78,21 @@ public class FutureTask<V> implements RunnableFuture<V> {
      * on a "state" field updated via CAS to track completion, along
      * with a simple Treiber stack to hold waiting threads.
      *
+     * 样式说明：与往常一样，我们绕过了使用AtomicXFieldUpdaters的开销，而是直接使用Unsafe内部函数。
      * Style note: As usual, we bypass overhead of using
      * AtomicXFieldUpdaters and instead directly use Unsafe intrinsics.
      */
 
     /**
+     * 此任务的运行状态，最初为NEW。运行状态仅在set，setException和cancel方法中转换为终端状态。
+     * 在完成期间，状态可能会采用COMPLETING（正在设置结果时）或INTERRUPTING（仅在中断跑步者满足cancel（true）时）的瞬态值。
+     * 从这些中间状态到最终状态的转换使用便宜的有序/惰性写入，因为值是唯一的，无法进一步修改。
+     *
+     * 状态可能的转换包括:
+     * NEW -> COMPLETING->NORMAL
+     * NEW -> COMPLETING->EXCEPTIONAL
+     * NEW -> CANCELLED
+     * NEW -> INTERRUPTING -> INTERRUPTED
      * The run state of this task, initially NEW.  The run state
      * transitions to a terminal state only in methods set,
      * setException, and cancel.  During completion, state may take on
@@ -89,40 +108,100 @@ public class FutureTask<V> implements RunnableFuture<V> {
      * NEW -> CANCELLED
      * NEW -> INTERRUPTING -> INTERRUPTED
      */
+
+    /**
+     * 这里用到了volatile,虽然保证不了原子性，但是能保证线程之间的可见性
+     */
     private volatile int state;
+
+    /**
+     * 新建
+     */
     private static final int NEW          = 0;
+
+    /**
+     * 完成中
+     */
     private static final int COMPLETING   = 1;
+
+    /**
+     * 正常
+     */
     private static final int NORMAL       = 2;
+
+    /**
+     * 异常中
+     */
     private static final int EXCEPTIONAL  = 3;
+
+    /**
+     * 被取消
+     */
     private static final int CANCELLED    = 4;
+
+    /**
+     * 被打断
+     */
     private static final int INTERRUPTING = 5;
+
+    /**
+     * 已经被打断
+     */
     private static final int INTERRUPTED  = 6;
 
-    /** The underlying callable; nulled out after running */
+    /**
+     * The underlying callable; nulled out after running
+     * 底层可调用；运行后消失
+     */
     private Callable<V> callable;
-    /** The result to return or exception to throw from get() */
-    private Object outcome; // non-volatile, protected by state reads/writes
-    /** The thread running the callable; CASed during run() */
+
+
+    /**
+     * The result to return or exception to throw from get()
+     * 从get()返回或抛出异常的结果
+     * non-volatile, protected by state reads/writes
+     * non-volatile，受状态读/写保护
+     */
+    private Object outcome;
+    /**
+     * The thread running the callable; CASed during run()
+     * 运行可调用线程；在run() 期间进行CAS
+     */
     private volatile Thread runner;
-    /** Treiber stack of waiting threads */
+
+
+    /**
+     * Treiber stack of waiting threads
+     * Treiber等待线程堆栈
+     */
     private volatile WaitNode waiters;
 
     /**
      * Returns result or throws exception for completed task.
-     *
+     * 返回结果或引发已完成任务的异常。
+     * NEW=0;
+     * COMPLETING=1;
+     * NORMAL=2;
+     * EXCEPTIONAL=3;
+     * CANCELLED=4;
+     * INTERRUPTING=5;
+     * INTERRUPTED=6;
      * @param s completed state value
      */
     @SuppressWarnings("unchecked")
     private V report(int s) throws ExecutionException {
         Object x = outcome;
+        //s == 2
         if (s == NORMAL)
             return (V)x;
+        //s = {CANCELLED INTERRUPTING INTERRUPTED}
         if (s >= CANCELLED)
             throw new CancellationException();
         throw new ExecutionException((Throwable)x);
     }
 
     /**
+     * 创建一个{@code FutureTask}，它将在运行时执行给定的{@code Callable}。
      * Creates a {@code FutureTask} that will, upon running, execute the
      * given {@code Callable}.
      *
@@ -133,18 +212,23 @@ public class FutureTask<V> implements RunnableFuture<V> {
         if (callable == null)
             throw new NullPointerException();
         this.callable = callable;
-        this.state = NEW;       // ensure visibility of callable
+        // ensure visibility of callable
+        //确保调用的可见性
+        //这里用到了volatile关键字
+        this.state = NEW;
     }
 
     /**
+     * 创建一个{@code FutureTask}，它将在运行时执行给定的{@code Runnable}，并安排{@code get}在成功完成后返回给定的结果。
      * Creates a {@code FutureTask} that will, upon running, execute the
      * given {@code Runnable}, and arrange that {@code get} will return the
      * given result on successful completion.
      *
-     * @param runnable the runnable task
+     * @param runnable the runnable task 一个运行的任务
      * @param result the result to return on successful completion. If
      * you don't need a particular result, consider using
      * constructions of the form:
+     *               结果返回成功完成。如果不需要特定的结果，请考虑使用以下形式的构造：
      * {@code Future<?> f = new FutureTask<Void>(runnable, null)}
      * @throws NullPointerException if the runnable is null
      */
@@ -153,32 +237,56 @@ public class FutureTask<V> implements RunnableFuture<V> {
         this.state = NEW;       // ensure visibility of callable
     }
 
+    /**
+     * 包括已取消(CANCELLED)|中断中(INTERRUPTING)|已中断(INTERRUPTED)
+     * @return
+     */
     public boolean isCancelled() {
         return state >= CANCELLED;
     }
 
+    /**
+     * 是否完成
+     */
     public boolean isDone() {
         return state != NEW;
     }
 
+    /**
+     * 取消
+     * @param mayInterruptIfRunning 正在运行的是否被中断
+     * @return
+     */
     public boolean cancel(boolean mayInterruptIfRunning) {
+
+        //如果当期状态不为NEW 并且可执行CAS操纵，则返回false
+        //可以将NEW的状态变为中断中和已取消。
         if (!(state == NEW &&
               UNSAFE.compareAndSwapInt(this, stateOffset, NEW,
                   mayInterruptIfRunning ? INTERRUPTING : CANCELLED)))
             return false;
-        try {    // in case call to interrupt throws exception
+        try {
+            // in case call to interrupt throws exception
+            // 万一中断调用引发异常
+            //如果运行中的任务可以中断
             if (mayInterruptIfRunning) {
                 try {
                     Thread t = runner;
+                    //如果任务不为空，则中断程序
                     if (t != null)
                         t.interrupt();
-                } finally { // final state
+                } finally {
+                    // final state
+                    // 最终的状态
+                    //这是一个有序的int值
                     UNSAFE.putOrderedInt(this, stateOffset, INTERRUPTED);
                 }
             }
         } finally {
+            //完成
             finishCompletion();
         }
+        //返回true.
         return true;
     }
 

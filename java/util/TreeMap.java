@@ -307,15 +307,20 @@ public class TreeMap<K,V>
     }
 
     /**
+     * 返回指定键所映射到的值；如果此映射不包含键的映射关系，则返回{@code null}。
      * Returns the value to which the specified key is mapped,
      * or {@code null} if this map contains no mapping for the key.
      *
+     * 更正式地讲，如果此映射包含从键{@code k}到值{@code v}的映射，使得{@code key}根据映射的顺序比较等于{@code k}，则此方法返回{@code v};
+     * 否则返回{@code null}。(最多可以有一个这样的映射。)
      * <p>More formally, if this map contains a mapping from a key
      * {@code k} to a value {@code v} such that {@code key} compares
      * equal to {@code k} according to the map's ordering, then this
      * method returns {@code v}; otherwise it returns {@code null}.
      * (There can be at most one such mapping.)
      *
+     * 返回值{@code null}不一定表示该映射不包含该键的映射。映射也可能将键显式映射到{@code null}。
+     * {@link #containsKey containsKey}操作可用于区分这两种情况。
      * <p>A return value of {@code null} does not <em>necessarily</em>
      * indicate that the map contains no mapping for the key; it's also
      * possible that the map explicitly maps the key to {@code null}.
@@ -324,9 +329,11 @@ public class TreeMap<K,V>
      *
      * @throws ClassCastException if the specified key cannot be compared
      *         with the keys currently in the map
+     *         如果指定的键无法与地图中当前的键进行比较
      * @throws NullPointerException if the specified key is null
      *         and this map uses natural ordering, or its comparator
      *         does not permit null keys
+     *         如果指定的键为null且此映射使用自然顺序，或者其比较器不允许使用null键
      */
     public V get(Object key) {
         Entry<K,V> p = getEntry(key);
@@ -352,13 +359,15 @@ public class TreeMap<K,V>
     }
 
     /**
+     * 将所有映射从指定映射复制到此映射。这些映射替换了该映射对指定映射中当前存在的任何键的任何映射。
      * Copies all of the mappings from the specified map to this map.
      * These mappings replace any mappings that this map had for any
      * of the keys currently in the specified map.
      *
-     * @param  map mappings to be stored in this map
+     * @param  map mappings to be stored in this map 要存储在此地图中的映射
      * @throws ClassCastException if the class of a key or value in
      *         the specified map prevents it from being stored in this map
+     *         如果指定映射中的键或值的类阻止其存储在此映射中
      * @throws NullPointerException if the specified map is null or
      *         the specified map contains a null key and this map does not
      *         permit null keys
@@ -382,16 +391,21 @@ public class TreeMap<K,V>
     }
 
     /**
+     * 返回给定键的此映射的条目；如果该映射不包含该键的条目，则返回{@code null}。
      * Returns this map's entry for the given key, or {@code null} if the map
      * does not contain an entry for the key.
      *
      * @return this map's entry for the given key, or {@code null} if the map
      *         does not contain an entry for the key
+     *         给定键的此映射项；如果该映射不包含该键的项，则为{@code null}
      * @throws ClassCastException if the specified key cannot be compared
      *         with the keys currently in the map
+     *         如果指定的键无法与地图中当前的键进行比较
+     *
      * @throws NullPointerException if the specified key is null
      *         and this map uses natural ordering, or its comparator
      *         does not permit null keys
+     *         如果指定的键为null且此映射使用自然顺序，或者其比较器不允许使用null键
      */
     final Entry<K,V> getEntry(Object key) {
         // Offload comparator-based version for sake of performance

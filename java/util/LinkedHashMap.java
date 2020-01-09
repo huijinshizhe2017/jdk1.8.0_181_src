@@ -31,7 +31,7 @@ import java.util.function.BiFunction;
 import java.io.IOException;
 
 /**
- * 利用HashTable和linkedList并结合先前的迭代排序实现了Map接口。他与HashMap不同之处就是所有实例采用双向链表的形式运行。
+ * 结合先前的迭代,利用HashTable和linkedList并排序实现了Map接口。他与HashMap不同之处就是所有实例采用双向链表的形式运行。
  * 这个linkedList定义了一个可排序的迭代器，key被插入到map的可插入排序的排序器中。
  * 注意:如果一个key重新插入到map中的时候，插入排序器并不会受到影响。
  * (如果m.containsKey（k）在调用之前即将返回true，则调用m.put（k，v）时，会将key（k）重新插入map（m）。)
@@ -412,10 +412,8 @@ public class LinkedHashMap<K,V>
         //如果访问的元素不是尾部元素，则执行如下操作:即将当前访问的元素放置到最后一位。
         //如果是尾部元素，则不执行任何操作
         if (accessOrder && (last = tail) != e) {
-
             //移除当前节点
-            LinkedHashMap.Entry<K,V> p =
-                (LinkedHashMap.Entry<K,V>)e, b = p.before, a = p.after;
+            LinkedHashMap.Entry<K,V> p = (LinkedHashMap.Entry<K,V>)e, b = p.before, a = p.after;
             p.after = null;
             if (b == null)
                 head = a;
@@ -437,7 +435,6 @@ public class LinkedHashMap<K,V>
             }
             //此时更新尾部节点为p
             tail = p;
-            //???
             ++modCount;
         }
     }
@@ -628,7 +625,7 @@ public class LinkedHashMap<K,V>
      * </pre>
      *
      * 此方法通常不以任何方式修改映射，而是允许映射按照其返回值的指示修改自身。
-     * 允许此方法直接修改地图，但如果这样做，则必须返回false（指示地图不应尝试任何进一步的修改）。未指定从此方法修改映射后返回true的效果。
+     * 允许此方法直接修改map，但如果这样做，则必须返回false（指示map不应尝试任何进一步的修改）。未指定从此方法修改映射后返回true的效果。
      * <p>This method typically does not modify the map in any way,
      * instead allowing the map to modify itself as directed by its
      * return value.  It <i>is</i> permitted for this method to modify
@@ -649,8 +646,8 @@ public class LinkedHashMap<K,V>
      *           in this invocation, this will be the entry that was just
      *           inserted; in other words, if the map contains a single
      *           entry, the eldest entry is also the newest.
-     *           最旧的映射中最近插入的条目，如果是按访问顺序排列的映射，则为最近访问的条目。
-     *           如果此方法返回true，则将删除该条目。如果在进行put或putAll调用之前该映射为空，则此映射将为刚刚插入的条目；
+     *           最近被插入到Map集合的实体，如果是按访问顺序排列的map，则为最近访问的条目。
+     *           如果此方法返回true，则将删除该条目。如果在进行put或putAll调用之前该映射为空，则此映射将为仅仅插入的条目；
      *           否则，此映射为null。换句话说，如果map包含单个条目，则最旧的条目也是最新的。
      * @return   <tt>true</tt> if the eldest entry should be removed
      *           from the map; <tt>false</tt> if it should be retained.
