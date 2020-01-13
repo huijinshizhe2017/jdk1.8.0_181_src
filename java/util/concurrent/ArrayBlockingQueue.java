@@ -159,6 +159,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
         // assert items[putIndex] == null;
         final Object[] items = this.items;
         items[putIndex] = x;
+        //表明这是一个循环列表
         if (++putIndex == items.length)
             putIndex = 0;
         count++;
@@ -166,12 +167,15 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
     }
 
     /**
+     *
      * Extracts element at current take position, advances, and signals.
-     * Call only when holding lock.
+     * Call only when holding lock.（拥有锁）
      */
     private E dequeue() {
         // assert lock.getHoldCount() == 1;
         // assert items[takeIndex] != null;
+        //确保当前拥有一把锁
+        //确保当前位置的索引不为null
         final Object[] items = this.items;
         @SuppressWarnings("unchecked")
         E x = (E) items[takeIndex];
@@ -194,7 +198,11 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
         // assert lock.getHoldCount() == 1;
         // assert items[removeIndex] != null;
         // assert removeIndex >= 0 && removeIndex < items.length;
+        //拥有锁
+        //洗出的位置不为空
+        //移除的索引大于0并且小于数组的长度(链表的长度)
         final Object[] items = this.items;
+        //如果要移除的位置就是当前需要移除的位置，则直接移除当前位置的对象
         if (removeIndex == takeIndex) {
             // removing front item; just advance
             items[takeIndex] = null;
@@ -207,15 +215,20 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
             // an "interior" remove
 
             // slide over all others up through putIndex.
+            //  循环数组的删除指定位置的元素
+            //
             final int putIndex = this.putIndex;
             for (int i = removeIndex;;) {
                 int next = i + 1;
+                //当前遍历的节点到尾部，则需要置首
                 if (next == items.length)
                     next = 0;
+                //下一个元素不再需要添加的元素位置，将元素前移
                 if (next != putIndex) {
                     items[i] = items[next];
                     i = next;
                 } else {
+                    //如果是当前放置元素的位置，则当前置空
                     items[i] = null;
                     this.putIndex = i;
                     break;
@@ -225,6 +238,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
             if (itrs != null)
                 itrs.removedAt(removeIndex);
         }
+        //唤起一个等待的线程
         notFull.signal();
     }
 
@@ -349,6 +363,8 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
         final ReentrantLock lock = this.lock;
         lock.lockInterruptibly();
         try {
+            //当线程数量满的时候，需要等待
+            //直到当前个数不等于项目长度的时候跳出循环，入队操作
             while (count == items.length)
                 notFull.await();
             enqueue(e);
@@ -385,16 +401,23 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
         }
     }
 
+    //弹栈
     public E poll() {
         final ReentrantLock lock = this.lock;
         lock.lock();
         try {
+            //如果是0个就没有可弹栈而言
             return (count == 0) ? null : dequeue();
         } finally {
             lock.unlock();
         }
     }
 
+    /**
+     * 可中断的获取元素
+     * @return
+     * @throws InterruptedException
+     */
     public E take() throws InterruptedException {
         final ReentrantLock lock = this.lock;
         lock.lockInterruptibly();
@@ -407,6 +430,13 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
         }
     }
 
+    /**
+     * 弹栈，
+     * @param timeout 超时时间
+     * @param unit
+     * @return
+     * @throws InterruptedException
+     */
     public E poll(long timeout, TimeUnit unit) throws InterruptedException {
         long nanos = unit.toNanos(timeout);
         final ReentrantLock lock = this.lock;
@@ -423,11 +453,17 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
         }
     }
 
+    /**
+     * 查找当前位置的元素，并不弹出
+     * 如果空列队为空则返回null
+     * @return
+     */
     public E peek() {
         final ReentrantLock lock = this.lock;
         lock.lock();
         try {
-            return itemAt(takeIndex); // null when queue is empty
+            // null when queue is empty
+            return itemAt(takeIndex);
         } finally {
             lock.unlock();
         }

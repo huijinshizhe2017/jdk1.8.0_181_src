@@ -37,6 +37,7 @@ package java.util.concurrent;
 import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 
 /**
+ * 倒数计数器，构造时设定计数值，当计数值归零后，所有阻塞线程恢复执行；其内部实现了AQS框架
  * A synchronization aid that allows one or more threads to wait until
  * a set of operations being performed in other threads completes.
  *

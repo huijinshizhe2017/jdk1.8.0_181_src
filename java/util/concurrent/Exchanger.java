@@ -40,6 +40,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
 /**
+ * 交换器，类似于双向栅栏，用于线程之间的配对和数据交换；其内部根据并发情况有“单槽交换”和“多槽交换”之分
  * A synchronization point at which threads can pair and swap elements
  * within pairs.  Each thread presents some object on entry to the
  * {@link #exchange exchange} method, matches with a partner thread,

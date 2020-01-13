@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
 /**
+ * 多阶段栅栏，相当于CyclicBarrier的升级版，可用于分阶段任务的并发控制执行；其内部比较复杂，支持树形结构，以减少并发带来的竞争
  * A reusable synchronization barrier, similar in functionality to
  * {@link java.util.concurrent.CyclicBarrier CyclicBarrier} and
  * {@link java.util.concurrent.CountDownLatch CountDownLatch}

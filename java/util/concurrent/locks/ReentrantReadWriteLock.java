@@ -38,6 +38,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.Collection;
 
 /**
+ * ReentrantReadWriteLock类，顾名思义，是一种读写锁，它是ReadWriteLock接口的直接实现，该类在内部实现了具体独占锁特点的写锁，
+ * 以及具有共享锁特点的读锁，和ReentrantLock一样，ReentrantReadWriteLock类也是通过定义内部类实现AQS框架的API来实现独占/共享的功能。
+ *
+ * 与ReadWriteLock类一样，ReentrantReadWriteLock对象在构造时，可以传入参数指定是公平锁还是非公平锁。
+ *1.2 支持锁重入
+ * 同一读线程在获取了读锁后还可以获取读锁；
+ * 同一写线程在获取了写锁之后既可以再次获取写锁又可以获取读锁；
+ * 1.3 支持锁降级
+ * 所谓锁降级，就是：先获取写锁，然后获取读锁，最后释放写锁，这样写锁就降级成了读锁。但是，读锁不能升级到写锁。简言之，就是：
+ *
+ * 写锁可以降级成读锁，读锁不能升级成写锁。
+ *
  * An implementation of {@link ReadWriteLock} supporting similar
  * semantics to {@link ReentrantLock}.
  * <p>This class has the following properties:
@@ -106,6 +118,8 @@ import java.util.Collection;
  * <p>The read lock and write lock both support interruption during lock
  * acquisition.
  *
+ * ReentrantReadWriteLock的内部读锁类、写锁类实现了Lock接口，所以可以通过newCondition()方法获取Condition对象。
+ * 但是这里要注意，读锁是没法获取Condition对象的，读锁调用newCondition() 方法会直接抛出UnsupportedOperationException。
  * <li><b>{@link Condition} support</b>
  * <p>The write lock provides a {@link Condition} implementation that
  * behaves in the same way, with respect to the write lock, as the
@@ -166,6 +180,10 @@ import java.util.Collection;
  *   }
  * }}</pre>
  *
+ * 我们知道，condition的作用其实是对Object类的wait()和notify()的增强，是为了让线程在指定对象上等待，是一种线程之间进行协调的工具。
+ * 当线程调用condition对象的await方法时，必须拿到和这个condition对象关联的锁。
+ * 由于线程对读锁的访问是不受限制的（在写锁未被占用的情况下），那么即使拿到了和读锁关联的condition对象也是没有意义的，
+ * 因为读线程之前不需要进行协调。
  * ReentrantReadWriteLocks can be used to improve concurrency in some
  * uses of some kinds of Collections. This is typically worthwhile
  * only when the collections are expected to be large, accessed by
@@ -215,6 +233,13 @@ import java.util.Collection;
 public class ReentrantReadWriteLock
         implements ReadWriteLock, java.io.Serializable {
     private static final long serialVersionUID = -6992448646407690164L;
+
+    /*
+     * 内部嵌套类声明：
+     * ReentrantReadWriteLock类有两个内部嵌套类ReadLock和WriteLock，
+     * 这两个内部类的实例会在ReentrantReadWriteLock类的构造器中创建，
+     * 并通过ReentrantReadWriteLock类的readLock()和writeLock()方法访问。
+     */
     /** Inner class providing readlock */
     private final ReentrantReadWriteLock.ReadLock readerLock;
     /** Inner class providing writelock */

@@ -38,6 +38,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.Collection;
 
 /**
+ * ReentrantLock类，实现了Lock接口，是一种可重入的独占锁，
+ * 它具有与使用 synchronized 相同的一些基本行为和语义，但功能更强大。
+ * ReentrantLock内部通过内部类实现了AQS框架(AbstractQueuedSynchronizer)
+ * 的API来实现独占锁的功能。
  * A reentrant mutual exclusion {@link Lock} with the same basic
  * behavior and semantics as the implicit monitor lock accessed using
  * {@code synchronized} methods and statements, but with extended
@@ -50,6 +54,21 @@ import java.util.Collection;
  * immediately if the current thread already owns the lock. This can
  * be checked using methods {@link #isHeldByCurrentThread}, and {@link
  * #getHoldCount}.
+ *
+ * 公平策略：在多个线程争用锁的情况下，公平策略倾向于将访问权授予等待时间最长的线程。
+ * 也就是说，相当于有一个线程等待队列，先进入等待队列的线程后续会先获得锁，
+ * 这样按照“先来后到”的原则，对于每一个等待线程都是公平的。
+ * 非公平策略：在多个线程争用锁的情况下，能够最终获得锁的线程是随机的（由底层OS调度）。
+ *
+ *
+ * ->当线程A释放锁时，线程B将经历从 挂起->唤醒 的线程调度过程，线程调度非常耗时。
+ * ->在线程B的 挂起->唤醒 阶段：
+ * --->如果采用非公平策略，那么线程C可以立即获取锁，线程C使用完并释放锁后，线程B可能才刚唤醒完成；
+ * 此时线程B又可以去获取锁，这样线程B和线程C的效率都得到提升，系统吞吐量提升；
+ * --->如果采用公平策略，线程C即使可用，也要等到线程调度完成，整个系统的吞吐量降低。
+ * 因此，当线程持有锁的时间相对较长或者线程请求锁的平均时间间隔较长时，可以考虑使用公平策略。
+ * 此时线程调度产生的耗时间隔影响会较小。
+ *
  *
  * <p>The constructor for this class accepts an optional
  * <em>fairness</em> parameter.  When set {@code true}, under
@@ -250,6 +269,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
     }
 
     /**
+     * //默认使用非公平锁
      * Creates an instance of {@code ReentrantLock}.
      * This is equivalent to using {@code ReentrantLock(false)}.
      */
@@ -258,10 +278,18 @@ public class ReentrantLock implements Lock, java.io.Serializable {
     }
 
     /**
+     * ReentrantLock类的其中一个构造器提供了指定公平策略 / 非公平策略的功能，默认为非公平策略。
+     * 公平策略：在多个线程争用锁的情况下，公平策略倾向于将访问权授予等待时间最长的线程。
+     * 也就是说，相当于有一个线程等待队列，先进入等待队列的线程后续会先获得锁，
+     * 这样按照“先来后到”的原则，对于每一个等待线程都是公平的。
+     * 非公平策略：新来的线程在入队之前会尝试抢一次锁，如果失败了就会乖乖进入队列，一旦进入队列是不能再次出来抢的，
+     * 只能等待队列一个一个地执行完毕。所谓不公平是指新来的线程会不会在入队之前尝试「野蛮」地抢锁，公平的时候是不会，但是非公平的时候是会的
+     *
      * Creates an instance of {@code ReentrantLock} with the
      * given fairness policy.
      *
      * @param fair {@code true} if this lock should use a fair ordering policy
+     *                         如果这个锁被使用公平排序的策略则为true.
      */
     public ReentrantLock(boolean fair) {
         sync = fair ? new FairSync() : new NonfairSync();

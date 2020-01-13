@@ -37,8 +37,13 @@ package java.util.concurrent.locks;
 import sun.misc.Unsafe;
 
 /**
+ * LockSupport类，是JUC包中的一个工具类，是用来创建锁和其他同步类的基本线程阻塞原语。
  * Basic thread blocking primitives for creating locks and other
  * synchronization classes.
+ *
+ * LockSupport类使用了一种名为Permit（许可）的概念来做到阻塞和唤醒线程的功能，可以把许可看成是一种(0,1)信号量（Semaphore），
+ * 但与 Semaphore 不同的是，许可的累加上限是1。
+ * 初始时，permit为0，当调用unpark()方法时，线程的permit加1，当调用park()方法时，如果permit为0，则调用线程进入阻塞状态。
  *
  * <p>This class associates, with each thread that uses it, a permit
  * (in the sense of the {@link java.util.concurrent.Semaphore
@@ -48,6 +53,9 @@ import sun.misc.Unsafe;
  * available, if it was not already available. (Unlike with Semaphores
  * though, permits do not accumulate. There is at most one.)
  *
+ * LockSupport类的核心方法其实就两个：park()和unark()，其中park()方法用来阻塞当前调用线程，unpark()方法用于唤醒指定线程。
+ * 这其实和Object类的wait()和signial()方法有些类似，但是LockSupport的这两种方法从语意上讲比Object类的方法更清晰，
+ * 而且可以针对指定线程进行阻塞和唤醒。
  * <p>Methods {@code park} and {@code unpark} provide efficient
  * means of blocking and unblocking threads that do not encounter the
  * problems that cause the deprecated methods {@code Thread.suspend}
@@ -77,6 +85,9 @@ import sun.misc.Unsafe;
  * useful for most concurrency control applications.  The {@code park}
  * method is designed for use only in constructions of the form:
  *
+ *
+ * 假设现在需要实现一种FIFO类型的独占锁，可以把这种锁看成是ReentrantLock的公平锁简单版本，
+ * 且是不可重入的，就是说当一个线程获得锁后，其它等待线程以FIFO的调度方式等待获取锁。
  *  <pre> {@code
  * while (!canProceed()) { ... LockSupport.park(this); }}</pre>
  *
@@ -99,13 +110,15 @@ import sun.misc.Unsafe;
  *     waiters.add(current);
  *
  *     // Block while not first in queue or cannot acquire lock
+ *     // 如果当前线程不在队首，或锁已被占用，则当前线程阻塞
+ *     // NOTE：这个判断的意图其实就是：锁必须由队首元素拿到
  *     while (waiters.peek() != current ||
  *            !locked.compareAndSet(false, true)) {
  *       LockSupport.park(this);
  *       if (Thread.interrupted()) // ignore interrupts while waiting
  *         wasInterrupted = true;
  *     }
- *
+ *     // 删除队首元素
  *     waiters.remove();
  *     if (wasInterrupted)          // reassert interrupt status on exit
  *       current.interrupt();
@@ -116,6 +129,15 @@ import sun.misc.Unsafe;
  *     LockSupport.unpark(waiters.peek());
  *   }
  * }}</pre>
+ *
+ * 上述FIFOMutex 类的实现中，当判断锁已被占用时，会调用LockSupport.park(this)方法，将当前调用线程阻塞；
+ * 当使用完锁时，会调用LockSupport.unpark(waiters.peek())方法将等待队列中的队首线程唤醒。
+ * 通过LockSupport的这两个方法，可以很方便的阻塞和唤醒线程。但是LockSupport的使用过程中还需要注意以下几点：
+ * 1.park方法的调用一般要方法一个循环判断体里面。之所以这样做，是为了防止线程被唤醒后，不进行判断而意外继续向下执行，这其实是一种Guarded Suspension的多线程设计模式。
+ * 2.park方法是会响应中断的，但是不会抛出异常。(也就是说如果当前调用线程被中断，则会立即返回但不会抛出中断异常)
+ * 3.park的重载方法park(Object blocker)，会传入一个blocker对象，所谓Blocker对象，
+ * 其实就是当前线程调用时所在调用对象（如上述示例中的FIFOMutex对象）。该对象一般供监视、诊断工具确定线程受阻塞的原因时使用。
+ *
  */
 public class LockSupport {
     private LockSupport() {} // Cannot be instantiated.
@@ -142,6 +164,7 @@ public class LockSupport {
     }
 
     /**
+     * 除非有许可，否则出于线程调度目的禁用当前线程。
      * Disables the current thread for thread scheduling purposes unless the
      * permit is available.
      *
