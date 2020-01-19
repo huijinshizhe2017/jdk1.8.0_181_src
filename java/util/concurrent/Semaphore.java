@@ -241,8 +241,16 @@ public class Semaphore implements java.io.Serializable {
             super(permits);
         }
 
+        /**
+         * 同步状态State表示CountDownLatch的计数器的初始值，当State==0时，表示无锁状态，且一旦State变为0，
+         * 就永远处于无锁状态了，此时所有线程在await上等待的线程都可以继续执行。
+         * 而在ReentrantLock中，State==0时，虽然也表示无锁状态，但是只有一个线程可以重置State的值。这就是共享锁的含义。
+         * @param acquires
+         * @return
+         */
         protected int tryAcquireShared(int acquires) {
             for (;;) {
+                //列队是否有前继者
                 if (hasQueuedPredecessors())
                     return -1;
                 int available = getState();

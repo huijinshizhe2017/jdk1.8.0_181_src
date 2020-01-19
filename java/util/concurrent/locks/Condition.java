@@ -38,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.Date;
 
 /**
+ * J.U.C包提供了Conditon接口，用以对原生的Object.wait()、Object.notify()进行增强。
  * {@code Condition} factors out the {@code Object} monitor
  * methods ({@link Object#wait() wait}, {@link Object#notify notify}
  * and {@link Object#notifyAll notifyAll}) into distinct objects to

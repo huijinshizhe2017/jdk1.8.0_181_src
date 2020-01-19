@@ -156,6 +156,7 @@ import java.util.concurrent.locks.AbstractQueuedSynchronizer;
  */
 public class CountDownLatch {
     /**
+     * 在CountDownLatch中，同步状态State表示CountDownLatch的计数器的初始大小。
      * Synchronization control For CountDownLatch.
      * Uses AQS state to represent count.
      */
@@ -281,12 +282,16 @@ public class CountDownLatch {
     /**
      * Decrements the count of the latch, releasing all waiting threads if
      * the count reaches zero.
+     * iiang当前的latch的数量减一，如果当前数量为0，则释放所有等待的线程
      *
+     * 如果当前的数量大于0，他将会减一。如果新计数为零，则将重新启用所有等待线程以进行线程调度。
      * <p>If the current count is greater than zero then it is decremented.
      * If the new count is zero then all waiting threads are re-enabled for
      * thread scheduling purposes.
      *
+     * 如果当前计数等于零，那么什么也不会发生。
      * <p>If the current count equals zero then nothing happens.
+     *
      */
     public void countDown() {
         sync.releaseShared(1);

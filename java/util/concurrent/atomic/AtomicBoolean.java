@@ -37,6 +37,7 @@ package java.util.concurrent.atomic;
 import sun.misc.Unsafe;
 
 /**
+ *
  * A {@code boolean} value that may be updated atomically. See the
  * {@link java.util.concurrent.atomic} package specification for
  * description of the properties of atomic variables. An
