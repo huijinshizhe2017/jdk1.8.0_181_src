@@ -39,6 +39,8 @@ import java.util.function.IntBinaryOperator;
 import sun.misc.Unsafe;
 
 /**
+ * AtomicInteger，应该是atomic框架中用得最多的原子类了。
+ * 顾名思义，AtomicInteger是Integer类型的线程安全原子类，可以在应用程序中以原子的方式更新int值。
  * An {@code int} value that may be updated atomically.  See the
  * {@link java.util.concurrent.atomic} package specification for
  * description of the properties of atomic variables. An
@@ -102,7 +104,15 @@ public class AtomicInteger extends Number implements java.io.Serializable {
 
     /**
      * Eventually sets to the given value.
+     * 我们知道通过volatile修饰的变量，可以保证在多处理器环境下的“可见性”。
+     * 也就是说当一个线程修改一个共享变量时，其它线程能立即读到这个修改的值。
+     * volatile的实现最终是加了内存屏障：
      *
+     * 1.保证写volatile变量会强制把CPU写缓存区的数据刷新到内存
+     * 2.读volatile变量时，使缓存失效，强制从内存中读取最新的值
+     * 3.由于内存屏障的存在，volatile变量还能阻止重排序
+     * lazySet内部调用了Unsafe类的putOrderedInt方法，通过该方法对共享变量值的改变，
+     * 不一定能被其他线程立即看到。也就是说以普通变量的操作方式来写变量。
      * @param newValue the new value
      * @since 1.6
      */
@@ -179,7 +189,15 @@ public class AtomicInteger extends Number implements java.io.Serializable {
 
     /**
      * Atomically increments by one the current value.
-     *
+     * 注意，上述是JDK1.8的实现，在JDK1.8之前，上述方法采用了自旋+CAS操作的方式：
+     * public final int getAndIncrement() {
+     *     for (;;) {
+     *         int current = get();
+     *         int next = current + 1;
+     *         if (compareAndSet(current, next))
+     *             return current;
+     *     }
+     * }
      * @return the updated value
      */
     public final int incrementAndGet() {
@@ -275,7 +293,7 @@ public class AtomicInteger extends Number implements java.io.Serializable {
      * updates fail due to contention among threads.  The function
      * is applied with the current value as its first argument,
      * and the given update as the second argument.
-     *
+     * 使用IntBinaryOperator 对当前值和x进行计算，并更新当前值，返回计算后的新值
      * @param x the update value
      * @param accumulatorFunction a side-effect-free function of two arguments
      * @return the updated value

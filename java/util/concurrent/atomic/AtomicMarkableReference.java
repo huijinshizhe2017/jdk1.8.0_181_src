@@ -36,6 +36,16 @@
 package java.util.concurrent.atomic;
 
 /**
+ * AtomicStampedReference可以给引用加上版本号，追踪引用的整个变化过程，如：
+ * A -> B -> C -> D - > A，通过AtomicStampedReference，我们可以知道，引用变量中途被更改了3次。
+ * 但是，有时候，我们并不关心引用变量更改了几次，只是单纯的关心是否更改过，所以就有了AtomicMarkableReference
+ *
+ * 可以看到，AtomicMarkableReference的唯一区别就是不再用int标识引用，
+ * 而是使用boolean变量——表示引用变量是否被更改过。
+ *
+ * 从语义上讲，AtomicMarkableReference对于那些不关心引用变化过程，
+ * 只关心引用变量是否变化过的应用会更加友好。
+ *
  * An {@code AtomicMarkableReference} maintains an object reference
  * along with a mark bit, that can be updated atomically.
  *

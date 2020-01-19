@@ -39,6 +39,14 @@ import java.util.function.IntBinaryOperator;
 import sun.misc.Unsafe;
 
 /**
+ * Atomic数组，顾名思义，就是能以原子的方式，操作数组中的元素。
+ * JDK提供了三种类型的原子数组：AtomicIntegerArray、AtomicLongArray、AtomicReferenceArray。
+ * 这三种类型大同小异，AtomicIntegerArray对应AtomicInteger，
+ * AtomicLongArray对应AtomicLong，AtomicReferenceArray对应AtomicReference。
+ * 其实阅读源码也可以发现，这些数组原子类与对应的普通原子类相比，只是多了通过索引找到内存中元素地址的操作而已。
+ * 注意：原子数组并不是说可以让线程以原子方式一次性地操作数组中所有元素的数组。
+ * 而是指对于数组中的每个元素，可以以原子方式进行操作。
+ *
  * An {@code int} array in which elements may be updated atomically.
  * See the {@link java.util.concurrent.atomic} package
  * specification for description of the properties of atomic
@@ -50,16 +58,21 @@ public class AtomicIntegerArray implements java.io.Serializable {
     private static final long serialVersionUID = 2862133569453604235L;
 
     private static final Unsafe unsafe = Unsafe.getUnsafe();
+    //获取int类型数组的第一个偏移地址
     private static final int base = unsafe.arrayBaseOffset(int[].class);
     private static final int shift;
     private final int[] array;
 
     static {
+        //获取int类型数组的每个int元素的占用内存大小
         int scale = unsafe.arrayIndexScale(int[].class);
         if ((scale & (scale - 1)) != 0)
             throw new Error("data type scale not a power of two");
+        //表示scale的二进制形式，从左边起，连续0的个数
+        //shift表示每个int元素的比特位数
         shift = 31 - Integer.numberOfLeadingZeros(scale);
     }
+
 
     private long checkedByteOffset(int i) {
         if (i < 0 || i >= array.length)
@@ -68,11 +81,24 @@ public class AtomicIntegerArray implements java.io.Serializable {
         return byteOffset(i);
     }
 
+    /**
+     * 将数组索引i转换为对应元素在内存中的便宜地址
+     * @param i
+     * @return
+     */
     private static long byteOffset(int i) {
+        //当前索引i的元素距离第一个元素的的偏移量
         return ((long) i << shift) + base;
     }
 
+
+    /*
+     * AtomicIntegerArray提供了两种构造器，本质都是内部利用array变量保存一个int[]数组引用。
+     * 另外，AtomicIntegerArray利用Unsafe类直接操作int[]对象的内存地址，以达到操作数组元素的目的
+     * Unsafe类的arrayIndexScale方法：返回指定类型数组的元素所占用的字节数。比如int[]数组中的每个int元素占用4个字节，就返回4。
+     */
     /**
+     *
      * Creates a new AtomicIntegerArray of the given length, with all
      * elements initially zero.
      *

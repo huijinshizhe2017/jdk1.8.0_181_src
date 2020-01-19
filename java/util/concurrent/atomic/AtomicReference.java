@@ -39,6 +39,27 @@ import java.util.function.BinaryOperator;
 import sun.misc.Unsafe;
 
 /**
+ * AtomicReference，顾名思义，就是以原子方式更新对象引用。
+ * 可以看到，AtomicReference持有一个对象的引用——value，并通过Unsafe类来操作该引用:
+ *
+ * 使用模式：
+ * AtomicReference<Object> ref = new AtomicReference<>(new Object());
+ * Object oldCache = ref.get();
+ *
+ * // 对缓存oldCache做一些操作
+ * Object newCache  =  someFunctionOfOld(oldCache);
+ *
+ * // 如果期间没有其它线程改变了缓存值，则更新
+ * boolean success = ref.compareAndSet(oldCache , newCache);
+ *
+ * CAS操作可能存在ABA的问题，就是说：
+ * 假如一个值原来是A，变成了B，又变成了A，那么CAS检查时会发现它的值没有发生变化，但是实际上却变化了。
+ * 一般来讲这并不是什么问题，比如数值运算，线程其实根本不关心变量中途如何变化，只要最终的状态和预期值一样即可。
+ *
+ * 但是，有些操作会依赖于对象的变化过程，此时的解决思路一般就是使用版本号。
+ * 在变量前面追加上版本号，每次变量更新的时候把版本号加一，那么A－B－A 就会变成1A - 2B - 3A。
+ *
+ *
  * An object reference that may be updated atomically. See the {@link
  * java.util.concurrent.atomic} package specification for description
  * of the properties of atomic variables.
