@@ -38,6 +38,24 @@ import java.util.Collection;
 import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 
 /**
+ * Semaphore，又名信号量，这个类的作用有点类似于“许可证”。有时，
+ * 我们因为一些原因需要控制同时访问共享资源的最大线程数量，比如出于系统性能的考虑需要限流，
+ * 或者共享资源是稀缺资源，我们需要有一种办法能够协调各个线程，以保证合理的使用公共资源。
+ *
+ * Semaphore维护了一个许可集，其实就是一定数量的“许可证”。
+ * 当有线程想要访问共享资源时，需要先获取(acquire)的许可；如果许可不够了，线程需要一直等待，
+ * 直到许可可用。当线程使用完共享资源后，可以归还(release)许可，以供其它需要的线程使用。
+ *
+ * 另外，Semaphore支持公平/非公平策略，这和ReentrantLock类似，后面讲Semaphore原理时会看到，
+ * 它们的实现本身就是类似的。
+ *
+ * 同步器	                作用
+ * CountDownLatch	    同步状态State > 0表示资源不可用，所有线程需要等待；
+ *                      State == 0表示资源可用，所有线程可以同时访问
+ * Semaphore	        剩余许可数 < 0表示资源不可用，所有线程需要等待；
+ *                      许可剩余数 ≥ 0表示资源可用，所有线程可以同时访问
+ *
+ *
  * 信号量，类似于“令牌”，用于控制共享资源的访问数量；其内部实现了AQS框架
  * A counting semaphore.  Conceptually, a semaphore maintains a set of
  * permits.  Each {@link #acquire} blocks if necessary until a permit is
@@ -189,8 +207,10 @@ public class Semaphore implements java.io.Serializable {
             for (;;) {
                 int current = getState();
                 int next = current + releases;
+                //同步状态值State超过int类型上限，溢出
                 if (next < current) // overflow
                     throw new Error("Maximum permit count exceeded");
+                //CAS更新State值
                 if (compareAndSetState(current, next))
                     return true;
             }
@@ -245,16 +265,22 @@ public class Semaphore implements java.io.Serializable {
          * 同步状态State表示CountDownLatch的计数器的初始值，当State==0时，表示无锁状态，且一旦State变为0，
          * 就永远处于无锁状态了，此时所有线程在await上等待的线程都可以继续执行。
          * 而在ReentrantLock中，State==0时，虽然也表示无锁状态，但是只有一个线程可以重置State的值。这就是共享锁的含义。
+         *
+         * 对于Semaphore来说，线程是可以一次性尝试获取多个许可的，
+         * 此时只要剩余的许可数量够，最终会通过自旋操作更新成功。如果剩余许可数量不够，会返回一个负数，表示获取失败。
          * @param acquires
          * @return
          */
         protected int tryAcquireShared(int acquires) {
             for (;;) {
                 //列队是否有前继者
+                //等待列队的队首是否有其他线程的在等待
                 if (hasQueuedPredecessors())
                     return -1;
                 int available = getState();
+                //计算剩余许可数
                 int remaining = available - acquires;
+                //剩余许可数remainning≥0才会更新State
                 if (remaining < 0 ||
                     compareAndSetState(available, remaining))
                     return remaining;
@@ -269,12 +295,19 @@ public class Semaphore implements java.io.Serializable {
      * @param permits the initial number of permits available.
      *        This value may be negative, in which case releases
      *        must occur before any acquires will be granted.
+     *                可用的初始许可证数量。该值可能为负，在这种情况下，必须先进行发布，然后再进行任何收购。
      */
     public Semaphore(int permits) {
         sync = new NonfairSync(permits);
     }
 
     /**
+     *
+     * Sync是Semaphore的一个内部抽象类，公平策略的FairSync和非公平策略的NonFairSync都继承该类。
+     * 可以看到，构造器传入的permits值就是同步状态的值，这也体现了我们在AQS系列中说过的：
+     * AQS框架的设计思想就是分离构建同步器时的一系列关注点，它的所有操作都围绕着资源——同步状态（synchronization state）来展开，
+     * 并将资源的定义和访问留给用户解决：
+     *
      * Creates a {@code Semaphore} with the given number of
      * permits and the given fairness setting.
      *

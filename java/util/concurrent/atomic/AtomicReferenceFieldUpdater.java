@@ -90,8 +90,11 @@ public abstract class AtomicReferenceFieldUpdater<T,V> {
      * generic types match.
      *
      * @param tclass the class of the objects holding the field
+     *               目标对象的类型
      * @param vclass the class of the field
+     *               目标字段的类型
      * @param fieldName the name of the field to be updated
+     *                  目标字段名
      * @param <U> the type of instances of tclass
      * @param <W> the type of instances of vclass
      * @return the updater
@@ -298,6 +301,11 @@ public abstract class AtomicReferenceFieldUpdater<T,V> {
         private final Class<V> vclass;
 
         /*
+         * 所有更新方法中的内部类型检查都包含内部内联优化检查，
+         * 以检查类为最终类（在这种情况下，简单的getClass比较就足够了）或类型为Object的常见情况
+         * （在这种情况下，无需检查，因为所有对象都是的实例）宾语）。
+         * 只需在构造函数中将vclass设置为null即可处理Object的情况。
+         * 当这些更快的筛选失败时，将调用targetCheck和updateCheck方法。
          * Internal type checks within all update methods contain
          * internal inlined optimizations checking for the common
          * cases where the class is final (in which case a simple
@@ -307,6 +315,13 @@ public abstract class AtomicReferenceFieldUpdater<T,V> {
          * setting vclass to null in constructor.  The targetCheck and
          * updateCheck methods are invoked when these faster
          * screenings fail.
+         * 通过源码，可以看到AtomicReferenceFieldUpdater的使用必须满足以下条件：
+         * 1.AtomicReferenceFieldUpdater只能修改对于它可见的字段，
+         *   也就是说对于目标类的某个字段field，如果修饰符是private，
+         *   但是AtomicReferenceFieldUpdater所在的使用类不能看到field，那就会报错；
+         * 2.目标类的操作字段，必须用volatile修饰；
+         * 3.目标类的操作字段，不能是static的；
+         * 4.AtomicReferenceFieldUpdater只适用于引用类型的字段；
          */
 
         AtomicReferenceFieldUpdaterImpl(final Class<T> tclass,
@@ -317,21 +332,27 @@ public abstract class AtomicReferenceFieldUpdater<T,V> {
             final Class<?> fieldClass;
             final int modifiers;
             try {
+                //获取字段
                 field = AccessController.doPrivileged(
                     new PrivilegedExceptionAction<Field>() {
                         public Field run() throws NoSuchFieldException {
                             return tclass.getDeclaredField(fieldName);
                         }
                     });
+                //判断调用方是否可以访问字段（其实就是对字段修饰符的上下文判断）
                 modifiers = field.getModifiers();
                 sun.reflect.misc.ReflectUtil.ensureMemberAccess(
                     caller, tclass, null, modifiers);
+                //目标类的类加载器
                 ClassLoader cl = tclass.getClassLoader();
+                //调用类的类加载器
                 ClassLoader ccl = caller.getClassLoader();
                 if ((ccl != null) && (ccl != cl) &&
                     ((cl == null) || !isAncestor(cl, ccl))) {
+                    //检查包访问权限
                     sun.reflect.misc.ReflectUtil.checkPackageAccess(tclass);
                 }
+                //字段类型
                 fieldClass = field.getType();
             } catch (PrivilegedActionException pae) {
                 throw new RuntimeException(pae.getException());
@@ -339,11 +360,14 @@ public abstract class AtomicReferenceFieldUpdater<T,V> {
                 throw new RuntimeException(ex);
             }
 
+
             if (vclass != fieldClass)
                 throw new ClassCastException();
+            //不能是原始类型
             if (vclass.isPrimitive())
                 throw new IllegalArgumentException("Must be reference type");
 
+            //目标字段必须是用volatile修饰
             if (!Modifier.isVolatile(modifiers))
                 throw new IllegalArgumentException("Must be volatile type");
 
@@ -360,6 +384,7 @@ public abstract class AtomicReferenceFieldUpdater<T,V> {
                           ? caller : tclass;
             this.tclass = tclass;
             this.vclass = vclass;
+            //获取字段偏移量
             this.offset = U.objectFieldOffset(field);
         }
 

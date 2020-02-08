@@ -139,22 +139,31 @@ abstract class Striped64 extends Number {
         }
     }
 
-    /** Number of CPUS, to place bound on table size */
+    /**
+     * Number of CPUS, to place bound on table size
+     * CPU核数，用来决定曹数组的大小
+     */
     static final int NCPU = Runtime.getRuntime().availableProcessors();
 
     /**
      * Table of cells. When non-null, size is a power of 2.
+     * 槽数组，大小为2的幂
      */
     transient volatile Cell[] cells;
 
     /**
      * Base value, used mainly when there is no contention, but also as
      * a fallback during table initialization races. Updated via CAS.
+     * 基数，两种情况会使用：
+     * 1.没有遇到并发竞争，直接使用base累加数值
+     * 2.初始化cell数组时，必须保证cell数组必须被初始化一次，（即只有一个线程能对cell进行初始化），
+     * 其他竞争失败的会将数值累加到base上
      */
     transient volatile long base;
 
     /**
      * Spinlock (locked via CAS) used when resizing and/or creating Cells.
+     * Cell初始化或者扩容时候，通过CAS操作将此标识设置为1-枷锁状态，初始化扩扩容完毕后，将次标识设置为0-无锁
      */
     transient volatile int cellsBusy;
 
@@ -214,14 +223,18 @@ abstract class Striped64 extends Number {
     final void longAccumulate(long x, LongBinaryOperator fn,
                               boolean wasUncontended) {
         int h;
+        //这个if相当于给当前线程生成一个非0的hash值
         if ((h = getProbe()) == 0) {
             ThreadLocalRandom.current(); // force initialization
             h = getProbe();
             wasUncontended = true;
         }
-        boolean collide = false;                // True if last slot nonempty
+        //如果hash值取模映射得到Cell单元不是null,则为true,此值也可以看做是扩容意向
+        // True if last slot nonempty
+        boolean collide = false;
         for (;;) {
             Cell[] as; Cell a; int n; long v;
+            //Cell已经被初始化
             if ((as = cells) != null && (n = as.length) > 0) {
                 if ((a = as[(n - 1) & h]) == null) {
                     if (cellsBusy == 0) {       // Try to attach new Cell
@@ -271,11 +284,14 @@ abstract class Striped64 extends Number {
                 }
                 h = advanceProbe(h);
             }
+            //Cells没有枷锁，并且没有被初始化，则尝试对他进行枷锁，并初始化Cells
             else if (cellsBusy == 0 && cells == as && casCellsBusy()) {
                 boolean init = false;
                 try {                           // Initialize table
                     if (cells == as) {
+                        //初始化大小为2
                         Cell[] rs = new Cell[2];
+                        //将其初始化，并赋初始值x
                         rs[h & 1] = new Cell(x);
                         cells = rs;
                         init = true;
@@ -286,6 +302,7 @@ abstract class Striped64 extends Number {
                 if (init)
                     break;
             }
+            //cells正在进行初始化，则尝试直接在基数上进行累加操作
             else if (casBase(v = base, ((fn == null) ? v + x :
                                         fn.applyAsLong(v, x))))
                 break;                          // Fall back on using base

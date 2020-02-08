@@ -1437,6 +1437,7 @@ public abstract class AbstractQueuedSynchronizer
                         return;
                     }
                 }
+                //
                 if (shouldParkAfterFailedAcquire(p, node) &&
                         //检查是否需要阻塞当前节点
                     parkAndCheckInterrupt())

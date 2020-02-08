@@ -41,6 +41,12 @@ import java.util.concurrent.locks.AbstractQueuedSynchronizer;
  * A synchronization aid that allows one or more threads to wait until
  * a set of operations being performed in other threads completes.
  *
+ * CountDownLatch是一个辅助同步器类，用来作计数使用，它的作用有点类似于生活中的倒数计数器，
+ * 先设定一个计数初始值，当计数降到0时，将会触发一些事件，如火箭的倒数计时。
+ * 初始计数值在构造CountDownLatch对象时传入，每调用一次 countDown() 方法，计数值就会减1。
+ * 线程可以调用CountDownLatch的await方法进入阻塞，当计数值降到0时，所有之前调用await阻塞的线程都会释放。
+ * 注意：CountDownLatch的初始计数值一旦降到0，无法重置。如果需要重置，可以考虑使用CyclicBarrier。
+ *
  * <p>A {@code CountDownLatch} is initialized with a given <em>count</em>.
  * The {@link #await await} methods block until the current count reaches
  * zero due to invocations of the {@link #countDown} method, after which

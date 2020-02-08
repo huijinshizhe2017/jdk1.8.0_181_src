@@ -38,7 +38,16 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * 循环栅栏，构造时设定等待线程数，当所有线程都到达栅栏后，栅栏放行；其内部通过ReentrantLock和Condition实现同步
+ * 循环栅栏，构造时设定等待线程数，当所有线程都到达栅栏后，栅栏放行；
+ * 其内部通过ReentrantLock和Condition实现同步.
+ *
+ * 这个类的功能和我们之前介绍的CountDownLatch有些类似。我们知道，CountDownLatch是一个倒数计数器，
+ * 在计数器不为0时，所有调用await的线程都会等待，当计数器降为0，线程才会继续执行，且计数器一旦变为0，
+ * 就不能再重置了。
+ * CyclicBarrier可以认为是一个栅栏，栅栏的作用是什么？就是阻挡前行。
+ * 顾名思义，CyclicBarrier是一个可以循环使用的栅栏，它做的事情就是：
+ * 让线程到达栅栏时被阻塞(调用await方法)，直到到达栅栏的线程数满足指定数量要求时，栅栏才会打开放行。
+ *
  * A synchronization aid that allows a set of threads to all wait for
  * each other to reach a common barrier point.  CyclicBarriers are
  * useful in programs involving a fixed sized party of threads that
@@ -139,6 +148,13 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class CyclicBarrier {
     /**
+     * 由于CyclicBarrier是可以循环复用的，
+     * 所以用一个内部类Generation表示每一轮的Cyclibarrier的运行状态
+     * 我们知道，CyclicBarrier 是可以循环复用的，所以CyclicBarrier 的每一轮任务都需要对应一个generation 对象。
+     * generation 对象内部有个broken字段，用来标识当前轮次的CyclicBarrier 是否已经损坏。
+     * nextGeneration方法用来创建一个新的generation 对象，并唤醒所有等待线程，重置内部参数。
+     *
+     *
      * Each use of the barrier is represented as a generation instance.
      * The generation changes whenever the barrier is tripped, or
      * is reset. There can be many generations associated with threads
@@ -150,6 +166,7 @@ public class CyclicBarrier {
      * but no subsequent reset.
      */
     private static class Generation {
+        //broken为true表示栅栏损坏
         boolean broken = false;
     }
 
@@ -157,28 +174,44 @@ public class CyclicBarrier {
     private final ReentrantLock lock = new ReentrantLock();
     /** Condition to wait on until tripped */
     private final Condition trip = lock.newCondition();
-    /** The number of parties */
+    /**
+     * The number of parties
+     * 剩余未到达的线程总数
+     * 栅栏开启需要的到达线程总数
+     */
     private final int parties;
-    /* The command to run when tripped */
+    /*
+     * The command to run when tripped
+     * 最后一个线程到达后执行的任务
+     * // 最后一个线程到达后执行的任务
+     */
     private final Runnable barrierCommand;
-    /** The current generation */
+    /**
+     * The current generation
+     * 当前轮次的运行状态
+     */
     private Generation generation = new Generation();
 
     /**
      * Number of parties still waiting. Counts down from parties to 0
      * on each generation.  It is reset to parties on each new
      * generation or when broken.
+     * 剩余未到达的线程总数
      */
     private int count;
 
     /**
+     * 唤醒所有等待的线程，并开启下一轮
      * Updates state on barrier trip and wakes up everyone.
      * Called only while holding lock.
      */
     private void nextGeneration() {
         // signal completion of last generation
+        //唤醒已经到达并正在等待的线程
         trip.signalAll();
         // set up next generation
+        //重置未到达的线程数
+        //创建一个新的Generation对象，表示下一轮的开始
         count = parties;
         generation = new Generation();
     }
@@ -186,63 +219,105 @@ public class CyclicBarrier {
     /**
      * Sets current barrier generation as broken and wakes up everyone.
      * Called only while holding lock.
+     * 破坏栅栏
      */
     private void breakBarrier() {
+        //置当前轮对应的Generation对象的状态为Broken
         generation.broken = true;
+        //重置未达到的线程数
         count = parties;
+        //唤醒所有线程
         trip.signalAll();
     }
 
     /**
+     *
+     * dowait方法并不复杂，一共有3部分：
+     *
+     * 判断栅栏是否已经损坏或当前线程已经被中断，如果是会分别抛出异常；
+     * 如果当前线程是最后一个到达的线程，会尝试执行最终任务（如果构造CyclicBarrier对象时有传入
+     * Runnable的话），执行成功即返回，失败会破坏栅栏；
+     * 对于不是最后一个到达的线程，会在Condition队列上等待，为了防止被意外唤醒，这里用了一个自旋操作。
+     *
      * Main barrier code, covering the various policies.
+     * BrokenBarrierException表示当前的CyclicBarrier已经损坏了，
+     * 可能等不到所有线程都到达栅栏了，所以已经在等待的线程也没必要再等了，可以散伙了。
+     *
+     * 出现以下几种情况之一时，当前等待线程会抛出BrokenBarrierException异常：
+     * 1)其它某个正在await等待的线程被中断了
+     * 2)其它某个正在await等待的线程超时了
+     * 3)某个线程重置了CyclicBarrier(调用了reset方法，后面会讲到)
+     *
+     * 另外，只要正在Barrier上等待的任一线程抛出了异常，那么Barrier就会认为肯定是凑不齐所有线程了，
+     * 就会将栅栏置为损坏（Broken）状态，并传播BrokenBarrierException
+     * 给其它所有正在等待（await）的线程。
      */
     private int dowait(boolean timed, long nanos)
         throws InterruptedException, BrokenBarrierException,
                TimeoutException {
         final ReentrantLock lock = this.lock;
+        //加锁，控制对内部资源的访问
         lock.lock();
         try {
             final Generation g = generation;
 
+            //如果展览已经损坏，则抛出异常
             if (g.broken)
                 throw new BrokenBarrierException();
 
+            //如果当前调用线程呗中断
             if (Thread.interrupted()) {
+                //破坏栅栏，唤醒素有已经等待的线程
                 breakBarrier();
                 throw new InterruptedException();
             }
 
+            //剩余未达到线程数-1，index表示当前线程
             int index = --count;
+            //index == 0 说明当前线程Wie最后一个到达线程
             if (index == 0) {  // tripped
+                //用来表示中种的任务是否执行成功
                 boolean ranAction = false;
                 try {
                     final Runnable command = barrierCommand;
                     if (command != null)
+                        //执行最终的任务
                         command.run();
                     ranAction = true;
+                    //唤醒所度鞥带线程并开启下一轮
                     nextGeneration();
                     return 0;
                 } finally {
+                    //任务执行失败
+                    //破坏栅栏，唤醒所有已经等待的线程
                     if (!ranAction)
                         breakBarrier();
                 }
             }
 
             // loop until tripped, broken, interrupted, or timed out
+            //自旋，放置线程被意外唤醒
             for (;;) {
                 try {
+                    //不需要限时等待
                     if (!timed)
+                        //直接在Condition对象上等待
                         trip.await();
+                    //需要限时等待
                     else if (nanos > 0L)
                         nanos = trip.awaitNanos(nanos);
+                    //等待过程中被中断
                 } catch (InterruptedException ie) {
+                    //说明当前这轮还没偶遇结束，没有其他线程执行过breakBarrier方法
                     if (g == generation && ! g.broken) {
                         breakBarrier();
                         throw ie;
+                        //说明当前这轮已经结束，或有其他线程执行过breakBarrier方法
                     } else {
                         // We're about to finish waiting even if we had not
                         // been interrupted, so this interrupt is deemed to
                         // "belong" to subsequent execution.
+                        //自行中断
                         Thread.currentThread().interrupt();
                     }
                 }
@@ -252,7 +327,7 @@ public class CyclicBarrier {
 
                 if (g != generation)
                     return index;
-
+                //等待超时
                 if (timed && nanos <= 0L) {
                     breakBarrier();
                     throw new TimeoutException();
@@ -271,6 +346,7 @@ public class CyclicBarrier {
      *
      * @param parties the number of threads that must invoke {@link #await}
      *        before the barrier is tripped
+     *                栅栏开启需要的到达线程总数
      * @param barrierAction the command to execute when the barrier is
      *        tripped, or {@code null} if there is no action
      * @throws IllegalArgumentException if {@code parties} is less than 1

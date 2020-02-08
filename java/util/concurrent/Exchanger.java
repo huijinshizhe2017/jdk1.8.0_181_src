@@ -40,7 +40,13 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
 /**
- * 交换器，类似于双向栅栏，用于线程之间的配对和数据交换；其内部根据并发情况有“单槽交换”和“多槽交换”之分
+ * 交换器，类似于双向栅栏，用于线程之间的配对和数据交换；其内部根据并发情况有“单槽交换”和“多槽交换”之分.
+ *
+ * Thread1  -----> Object1 ------> Thread2
+ *          <----- Object2 <------
+ *
+ * Thread1线程到达栅栏后，会首先观察有没其它线程已经到达栅栏，如果没有就会等待，如果已经有其它线程（Thread2）已经到达了，
+ * 就会以成对的方式交换各自携带的信息，因此Exchanger非常适合用于两个线程之间的数据交换。
  * A synchronization point at which threads can pair and swap elements
  * within pairs.  Each thread presents some object on entry to the
  * {@link #exchange exchange} method, matches with a partner thread,
@@ -328,6 +334,8 @@ public class Exchanger<V> {
 
     /**
      * Per-thread state
+     * 构造时，内部创建了一个Participant对象，
+     * Participant是Exchanger的一个内部类，本质就是一个ThreadLocal，用来保存线程本地变量Node：
      */
     private final Participant participant;
 
