@@ -71,7 +71,7 @@ public class BufferedReader extends Reader {
 
     private Reader in;
 
-    private char cb[];
+
     private int nChars, nextChar;
 
     private static final int INVALIDATED = -2;

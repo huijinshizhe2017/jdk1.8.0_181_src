@@ -47,6 +47,10 @@ import java.util.Collection;
  * {@code synchronized} methods and statements, but with extended
  * capabilities.
  *
+ * A ReentrantLock由线程拥有 ，最后成功锁定，但尚未解锁。
+ * 调用lock的线程将返回，成功获取锁，当锁不是由另一个线程拥有。
+ * 如果当前线程已经拥有该锁，该方法将立即返回。
+ * 这可以使用方法isHeldByCurrentThread()和getHoldCount()进行检查。
  * <p>A {@code ReentrantLock} is <em>owned</em> by the thread last
  * successfully locking, but not yet unlocking it. A thread invoking
  * {@code lock} will return, successfully acquiring the lock, when
@@ -75,6 +79,12 @@ import java.util.Collection;
  * 大于1	    表示锁被占用，且值表示同一线程的重入次数
  *
  *
+ * 该类的构造函数接受可选的公平参数。 当设置true ，在争用下，锁有利于授予访问最长等待的线程。
+ * 否则，该锁不保证任何特定的访问顺序。
+ * 使用许多线程访问的公平锁的程序可能会比使用默认设置的整体吞吐量（即，更慢，通常要慢得多），
+ * 但是具有更小的差异来获得锁定并保证缺乏饥饿。 但是请注意，锁的公平性不能保证线程调度的公平性。
+ * 因此，使用公平锁的许多线程之一可以连续获得多次，而其他活动线程不进行而不是当前持有锁。
+ * 另请注意， 未定义的tryLock()方法不符合公平性设置。 如果锁可用，即使其他线程正在等待，它也会成功。
  * <p>The constructor for this class accepts an optional
  * <em>fairness</em> parameter.  When set {@code true}, under
  * contention, locks favor granting access to the longest-waiting
@@ -92,6 +102,7 @@ import java.util.Collection;
  * honor the fairness setting. It will succeed if the lock
  * is available even if other threads are waiting.
  *
+ * 建议的做法是始终立即跟随lock与try块的通话，最常见的是在之前/之后的建设，如：
  * <p>It is recommended practice to <em>always</em> immediately
  * follow a call to {@code lock} with a {@code try} block, most
  * typically in a before/after construction such as:
@@ -111,16 +122,20 @@ import java.util.Collection;
  *   }
  * }}</pre>
  *
+ * 除了实现Lock接口，这个类定义了许多public种protected方法用于检查锁的状态。
+ * 其中一些方法仅适用于仪器和监控。
  * <p>In addition to implementing the {@link Lock} interface, this
  * class defines a number of {@code public} and {@code protected}
  * methods for inspecting the state of the lock.  Some of these
  * methods are only useful for instrumentation and monitoring.
  *
+ * 此类的序列化与内置锁的操作方式相同：反序列化锁处于未锁定状态，无论其序列化时的状态如何。
  * <p>Serialization of this class behaves in the same way as built-in
  * locks: a deserialized lock is in the unlocked state, regardless of
  * its state when serialized.
  *
  *
+ * 此锁最多支持同一个线程的2147483647递归锁。 尝试超过此限制会导致Error从锁定方法中抛出。
  * <p>This lock supports a maximum of 2147483647 recursive locks by
  * the same thread. Attempts to exceed this limit result in
  * {@link Error} throws from locking methods.
@@ -186,19 +201,29 @@ public class ReentrantLock implements Lock, java.io.Serializable {
         final boolean nonfairTryAcquire(int acquires) {
             final Thread current = Thread.currentThread();
             int c = getState();
+            //还没有线程占有锁
             if (c == 0) {
                 if (compareAndSetState(0, acquires)) {
                     setExclusiveOwnerThread(current);
                     return true;
                 }
             }
+            //如果是独占的当前线程，则重入操作
             else if (current == getExclusiveOwnerThread()) {
+                //状态值+acquires
                 int nextc = c + acquires;
+                //超过最大int类型抛出异常
                 if (nextc < 0) // overflow
                     throw new Error("Maximum lock count exceeded");
+                //设置当前线程的状态值
                 setState(nextc);
+                //表明可以重入
                 return true;
             }
+            //这里排除3种情况:
+            //1.还没有其他线程获取到锁
+            //2.有线程获取到锁并且是当前线程
+            //当c==0还没有其他线程拥有锁，CAS的时候成功设置值
             return false;
         }
 
@@ -221,6 +246,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
             setState(c);
             return free;
         }
+
 
         protected final boolean isHeldExclusively() {
             // While we must in general read state before owner,
@@ -247,6 +273,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
         }
 
         /**
+         * 从流中重构实例（即反序列化它）。
          * Reconstitutes the instance from a stream (that is, deserializes it).
          */
         private void readObject(java.io.ObjectInputStream s)

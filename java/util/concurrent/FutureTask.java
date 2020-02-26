@@ -37,9 +37,9 @@ package java.util.concurrent;
 import java.util.concurrent.locks.LockSupport;
 
 /**
- * 可取消的异步计算。此类提供{@link Future}的基本实现，其中包含启动和取消计算，查询以查看计算是否完成以及检索计算结果的方法。
- * 只有在计算完成后才能检索结果；如果计算尚未完成，则{@code get}方法将阻塞。
- * 一旦计算完成，就不能重新开始或取消计算(除非使用{@link #runAndReset}调用计算)。
+ * 可取消的异步计算。 该类提供了一个Future的基本实现 ，具有启动和取消计算的方法，
+ * 查询计算是否完整，并检索计算结果。 结果只能在计算完成后才能检索; 如果计算尚未完成，则get方法将阻止。
+ * 一旦计算完成，则无法重新启动或取消计算（除非使用runAndReset()调用计算 ）。
  * A cancellable asynchronous computation.  This class provides a base
  * implementation of {@link Future}, with methods to start and cancel
  * a computation, query to see if the computation is complete, and
@@ -50,8 +50,8 @@ import java.util.concurrent.locks.LockSupport;
  * or cancelled (unless the computation is invoked using
  * {@link #runAndReset}).
  *
- * {@code FutureTask}可以用于包装{@link Callable}或{@link Runnable}对象。由于{@code FutureTask}实现了{@code Runnable}，
- * 因此可以将{@code FutureTask}提交给{@link Executor}以便执行。
+ * A FutureTask可用于包装Callable或Runnable对象。 因为FutureTask实现Runnable ，
+ * 一个FutureTask可以提交到一个Executor执行。
  * <p>A {@code FutureTask} can be used to wrap a {@link Callable} or
  * {@link Runnable} object.  Because {@code FutureTask} implements
  * {@code Runnable}, a {@code FutureTask} can be submitted to an
@@ -69,7 +69,7 @@ import java.util.concurrent.locks.LockSupport;
  */
 public class FutureTask<V> implements RunnableFuture<V> {
     /*
-     *修订说明：这与依赖AbstractQueuedSynchronizer的此类的早期版本不同，主要是为了避免用户对取消比赛期间保留中断状态感到惊讶。
+     * 修订说明：这与依赖AbstractQueuedSynchronizer的此类的早期版本不同，主要是为了避免用户对取消比赛期间保留中断状态感到惊讶。
      * 当前设计中的同步控制依赖于通过CAS更新的“状态”字段来跟踪完成情况，以及一个简单的Treiber堆栈来保存等待线程。
      * Revision notes: This differs from previous versions of this
      * class that relied on AbstractQueuedSynchronizer, mainly to

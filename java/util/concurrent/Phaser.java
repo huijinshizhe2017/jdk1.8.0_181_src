@@ -42,6 +42,39 @@ import java.util.concurrent.locks.LockSupport;
 
 /**
  * 多阶段栅栏，相当于CyclicBarrier的升级版，可用于分阶段任务的并发控制执行；其内部比较复杂，支持树形结构，以减少并发带来的竞争
+ * 同步器	                作用
+ * CountDownLatch	    倒数计数器，初始时设定计数器值，线程可以在计数器上等待，当计数器值归0后，所有等待的线程继续执行
+ * CyclicBarrier	    循环栅栏，初始时设定参与线程数，当线程到达栅栏后，会等待其它线程的到达，当到达栅栏的总数满足指定数后，
+ *                      所有等待的线程继续执行
+ * Phaser	            多阶段栅栏，可以在初始时设定参与线程数，也可以中途注册/注销参与者，当到达的参与者数量满足栅栏设定的数量后，
+ *                      会进行阶段升级（advance）
+ *
+ * Phaser中有一些比较重要的概念，理解了这些概念才能理解Phaser的功能。
+ *
+ * phase(阶段)
+ *      我们知道，在CyclicBarrier中，只有一个栅栏，线程在到达栅栏后会等待其它线程的到达。
+ *      Phaser也有栅栏，在Phaser中，栅栏的名称叫做phase(阶段)，在任意时间点，Phaser只处于某一个phase(阶段)，初始阶段为0，
+ *      最大达到Integerr.MAX_VALUE，然后再次归零。当所有parties参与者都到达后，phase值会递增。
+ *      Phaser中的phase(阶段)这个概念其实和CyclicBarrier中的Generation很相似，只不过Generation没有计数。
+ * parties(参与者)
+ *      parties(参与者)其实就是CyclicBarrier中的参与线程的概念。
+ *      CyclicBarrier中的参与者在初始构造指定后就不能变更，而Phaser既可以在初始构造时指定参与者的数量，
+ *      也可以中途通过register、bulkRegister、arriveAndDeregister等方法注册/注销参与者。
+ * arrive(到达) / advance(进阶)
+ *      Phaser注册完parties（参与者）之后，参与者的初始状态是unarrived的，当参与者到达（arrive）当前阶段（phase）后，
+ *      状态就会变成arrived。当阶段的到达参与者数满足条件后（注册的数量等于到达的数量），阶段就会发生进阶（advance）——也就是phase值+1。
+ * Termination（终止）
+ *      代表当前Phaser对象达到终止状态，有点类似于CyclicBarrier中的栅栏被破坏的概念。
+ * Tiering（分层）
+ *      Phaser支持分层（Tiering） —— 一种树形结构，通过构造函数可以指定当前待构造的Phaser对象的父结点。
+ *      之所以引入Tiering，是因为当一个Phaser有大量参与者（parties）的时候，内部的同步操作会使性能急剧下降，
+ *      而分层可以降低竞争，从而减小因同步导致的额外开销。
+ *      在一个分层Phasers的树结构中，注册和撤销子Phaser或父Phaser是自动被管理的。当一个Phaser的参与者（parties）数量变成0时，
+ *      如果有该Phaser有父结点，就会将它从父结点中溢移除。
+ *
+ * Phaser使用一个long类型来保存同步状态值State，并按位划分不同区域的含义，通过掩码和位运算进行赋值和操作：
+ *
+ *
  * A reusable synchronization barrier, similar in functionality to
  * {@link java.util.concurrent.CyclicBarrier CyclicBarrier} and
  * {@link java.util.concurrent.CountDownLatch CountDownLatch}
@@ -270,9 +303,18 @@ public class Phaser {
      * Primary state representation, holding four bit-fields:
      *
      * unarrived  -- the number of parties yet to hit barrier (bits  0-15)
+     *               未达到的参与者数目
      * parties    -- the number of parties to wait            (bits 16-31)
+     *               总参与者(需要等待的参与者)数据
      * phase      -- the generation of the barrier            (bits 32-62)
+     *               当前阶段
      * terminated -- set if barrier is terminated             (bit  63 / sign)
+     *               屏障终止标志
+     *
+     * 注:初始时，state==1，成为EMPTY,表示此phaser对象还没有线程来注册。之所以不是0，是因为0有特殊的含义，比如当所有的线程都到达屏障了，此时
+     *    unarrived为0.
+     *
+     * 初始时，parties = 0,而unarrived = 1,更易于辨别
      *
      * Except that a phaser with no registered parties is
      * distinguished by the otherwise illegal state of having zero
@@ -295,19 +337,61 @@ public class Phaser {
      */
     private volatile long state;
 
+    /**
+     * 最大参与者数量
+     */
     private static final int  MAX_PARTIES     = 0xffff;
+
+    /**
+     * 最大phase数目
+     */
     private static final int  MAX_PHASE       = Integer.MAX_VALUE;
+
+    /**
+     * 参与者移位
+     */
     private static final int  PARTIES_SHIFT   = 16;
+
+    /**
+     * phase移位
+     */
     private static final int  PHASE_SHIFT     = 32;
+
+    /**
+     * 掩码，用于计算未到达的参与者数目
+     */
     private static final int  UNARRIVED_MASK  = 0xffff;      // to mask ints
+
+    /**
+     * 掩码，用于计算参与者数目
+     */
     private static final long PARTIES_MASK    = 0xffff0000L; // to mask longs
     private static final long COUNTS_MASK     = 0xffffffffL;
+
+    /**
+     * 屏障终止标志
+     */
     private static final long TERMINATION_BIT = 1L << 63;
 
     // some special values
+    /**
+     * 一个参与者到达
+     */
     private static final int  ONE_ARRIVAL     = 1;
+
+    /**
+     * 一个参与者
+     */
     private static final int  ONE_PARTY       = 1 << PARTIES_SHIFT;
+
+    /**
+     * 注销一个参与者
+     */
     private static final int  ONE_DEREGISTER  = ONE_ARRIVAL|ONE_PARTY;
+
+    /**
+     * 初始值
+     */
     private static final int  EMPTY           = 1;
 
     // The following unpacking methods are usually manually inlined
@@ -346,6 +430,11 @@ public class Phaser {
      * contention when releasing some threads while adding others, we
      * use two of them, alternating across even and odd phases.
      * Subphasers share queues with root to speed up releases.
+     *
+     * 无锁栈--treiber Stack,保存在Phaser树的根节点中，其余所有Phaser子结点共享这两个栈。
+     *
+     * evenQ和oddQ分别是两个“treiber Stack”的栈顶指针，Phaser使用Treiber Stack结构来保存等待线程。
+     * EvenQ是偶数栈，oddQ是奇数栈，分别在内部Phase为偶数和奇数下交替使用，这两个栈都挂在根Phaser下。
      */
     private final AtomicReference<QNode> evenQ;
     private final AtomicReference<QNode> oddQ;
@@ -422,41 +511,65 @@ public class Phaser {
     /**
      * Implementation of register, bulkRegister
      *
+     * doRegister方法用来给当前Phaser对象注册参与者，主要有三个分支：
+     * ①当前Phaser已经注册过参与者
+     * 如果参与者已经全部到达栅栏，则当前线程需要阻塞等待（因为此时phase正在变化，增加1到下一个phase），否则直接更新State。
+     *
+     * ②当前Phaser未注册过参与者（第一次注册），且没有父结点
+     * 这种情况最简单，直接更新当前Phaser的State值。
+     *
+     * ③当前Phaser未注册过参与者（第一次注册），且有父结点
+     * 说明当前Phaser是新加入的叶子结点，需要向父结点注册自身，同时更新自身的State值。
+     *
+     * 注意: reconcileState方法比较特殊，因为当出现树形结构时，根结点首先进行phase的更新，所以需要显式同步，使当前结点和根结点保持一致。
+     *
      * @param registrations number to add to both parties and
      * unarrived fields. Must be greater than zero.
      */
     private int doRegister(int registrations) {
         // adjustment to state
+        // 首先计算注冊后当前State要调整的值adjust
         long adjust = ((long)registrations << PARTIES_SHIFT) | registrations;
         final Phaser parent = this.parent;
         int phase;
         for (;;) {
+            //reconcileState()调整当前Phaser的State与root一致
             long s = (parent == null) ? state : reconcileState();
             int counts = (int)s;
+            // 参与者数目
             int parties = counts >>> PARTIES_SHIFT;
+            // 未到达的数目
             int unarrived = counts & UNARRIVED_MASK;
             if (registrations > MAX_PARTIES - parties)
                 throw new IllegalStateException(badRegister(s));
+            // 当前Phaser所处的阶段phase
             phase = (int)(s >>> PHASE_SHIFT);
+            // CASE1: 当前Phaser已经注册过参与者
             if (phase < 0)
                 break;
             if (counts != EMPTY) {                  // not 1st registration
                 if (parent == null || reconcileState() == s) {
+                    // 参与者已全部到达栅栏, 当前Phaser正在Advance, 需要阻塞等待这一过程完成
                     if (unarrived == 0)             // wait out advance
                         root.internalAwaitAdvance(phase, null);
+                    // 否则,直接更新State
                     else if (UNSAFE.compareAndSwapLong(this, stateOffset,
                                                        s, s + adjust))
                         break;
                 }
             }
+            // CASE2: 当前Phaser未注册过参与者（第一次注册）,且没有父结点
             else if (parent == null) {              // 1st root registration
                 long next = ((long)phase << PHASE_SHIFT) | adjust;
+                // CAS更新当前Phaser的State值
                 if (UNSAFE.compareAndSwapLong(this, stateOffset, s, next))
                     break;
             }
+            // CASE3: 当前Phaser未注册过参与者（第一次注册）,且有父结点
             else {
                 synchronized (this) {               // 1st sub registration
                     if (state == s) {               // recheck under lock
+                        // 向父结点注册一个参与者
                         phase = parent.doRegister(1);
                         if (phase < 0)
                             break;
@@ -485,6 +598,13 @@ public class Phaser {
      * their own advance by setting unarrived to parties (or if
      * parties is zero, resetting to unregistered EMPTY state).
      *
+     * 调整当前Phaser的同步状态值，和Root节点保持一致。
+     *
+     * 因为当出现树形结构的时候，根节点是最先进行阶段(phase)的迁跃(advance),因此需要显示同步，以便和根节点保持一致。
+     * reconcileState利用自旋更新state值
+     *
+     *
+     *
      * @return reconciled state
      */
     private long reconcileState() {
@@ -510,6 +630,7 @@ public class Phaser {
      * Creates a new phaser with no initially registered parties, no
      * parent, and initial phase number 0. Any thread using this
      * phaser will need to first register for it.
+     * 创建一个没有初始注册方，没有父级且初始阶段号为0的新相位器。使用此相位器的任何线程都需要首先为其注册。
      */
     public Phaser() {
         this(null, 0);
@@ -518,7 +639,7 @@ public class Phaser {
     /**
      * Creates a new phaser with the given number of registered
      * unarrived parties, no parent, and initial phase number 0.
-     *
+     *  使用给定数量的未注册未注册方，没有父级和初始阶段号0来创建一个新的阶段器。
      * @param parties the number of parties required to advance to the
      * next phase
      * @throws IllegalArgumentException if parties less than zero
@@ -542,6 +663,9 @@ public class Phaser {
      * registered unarrived parties.  When the given parent is non-null
      * and the given number of parties is greater than zero, this
      * child phaser is registered with its parent.
+     * 使用给定的父级和未注册的未注册方数创建一个新的相位器。当给定的父级不为空并且给定的参与方数大于零时，此子相位器将向其父级注册。
+     *
+     * 关键就是给当前的Phaser对象指定父结点时，如果当前Phaser的参与者不为0，需要向父Phaser注册一个参与者（代表当前结点本身）：
      *
      * @param parent the parent phaser
      * @param parties the number of parties required to advance to the
@@ -550,28 +674,46 @@ public class Phaser {
      * or greater than the maximum number of parties supported
      */
     public Phaser(Phaser parent, int parties) {
+        //无符号右移16位，不为0说明parties超过了最大限制数
         if (parties >>> PARTIES_SHIFT != 0)
             throw new IllegalArgumentException("Illegal number of parties");
+        //初始phase为0
         int phase = 0;
         this.parent = parent;
+        //存在父节点
         if (parent != null) {
             final Phaser root = parent.root;
+            //当前phase对象的root指针指向树的根节点
             this.root = root;
+            //共用父节点的偶数无锁栈
             this.evenQ = root.evenQ;
+            //共用父节点的奇数无锁栈
             this.oddQ = root.oddQ;
+            //如果当前Phaser的参与者不为0
             if (parties != 0)
+                //向父Phaser注册一个参与者(这里是1个)
                 phase = parent.doRegister(1);
         }
+        //不存在父节点
         else {
+            //root指向自身
             this.root = this;
+            //创建偶数这奇数无锁栈
             this.evenQ = new AtomicReference<QNode>();
             this.oddQ = new AtomicReference<QNode>();
         }
+        //更新同步状态值
         this.state = (parties == 0) ? (long)EMPTY :
             ((long)phase << PHASE_SHIFT) |
             ((long)parties << PARTIES_SHIFT) |
             ((long)parties);
     }
+
+    /*
+     * Phaser提供了两个注册参与者的方法：
+     * register：注册单个参与者
+     * bulkRegister：批量注册参与者
+     */
 
     /**
      * Adds a new unarrived party to this phaser.  If an ongoing
@@ -581,10 +723,14 @@ public class Phaser {
      * this child phaser is also registered with its parent. If
      * this phaser is terminated, the attempt to register has
      * no effect, and a negative value is returned.
+     * 向此移相器添加一个新的未到达方。如果正在进行{@link #onAdvance}的正在进行的调用，
+     * 则此方法可能要等待其完成才能返回。如果此相位器有一个父级，并且此相位器以前没有注册方，
+     * 则此子相位器也将在其父级中注册。如果此相位器终止，则尝试注册无效，并返回负值。
      *
      * @return the arrival phase number to which this registration
      * applied.  If this value is negative, then this phaser has
      * terminated, in which case registration has no effect.
+     * 此注册适用的到达阶段编号。如果该值为负，则此移相器已终止，在这种情况下，注册无效。
      * @throws IllegalStateException if attempting to register more
      * than the maximum supported number of parties
      */
@@ -656,6 +802,15 @@ public class Phaser {
     }
 
     /**
+     * 参与者到达并等待
+     *
+     * arriveAndAwaitAdvance的主要逻辑如下：
+     * 首先将同步状态值State中的未到达参与者数量减1，然后判断未到达参与者数量是否为0?
+     *
+     * 如果不为0，则阻塞当前线程，以等待其他参与者到来；
+     *
+     * 如果为0，说明当前线程是最后一个参与者，如果有父结点则对父结点递归调用该方法。（因为只有根结点的未到达参与者数目为0时），才会进阶phase。
+     *
      * Arrives at this phaser and awaits others. Equivalent in effect
      * to {@code awaitAdvance(arrive())}.  If you need to await with
      * interruption or timeout, you can arrange this with an analogous
@@ -675,6 +830,7 @@ public class Phaser {
      */
     public int arriveAndAwaitAdvance() {
         // Specialization of doArrive+awaitAdvance eliminating some reads/paths
+        //同步并获取同步状态State值
         final Phaser root = this.root;
         for (;;) {
             long s = (root == this) ? state : reconcileState();
@@ -682,17 +838,22 @@ public class Phaser {
             if (phase < 0)
                 return phase;
             int counts = (int)s;
+            //未达到的参与者数目
             int unarrived = (counts == EMPTY) ? 0 : (counts & UNARRIVED_MASK);
             if (unarrived <= 0)
                 throw new IllegalStateException(badArrive(s));
+            //CAS操作，将未达到的参与者数减去1
             if (UNSAFE.compareAndSwapLong(this, stateOffset, s,
                                           s -= ONE_ARRIVAL)) {
+                //如果还有未达到的（及当前线程不是最后一个到达者），则阻塞当前线程
                 if (unarrived > 1)
                     return root.internalAwaitAdvance(phase, null);
+                //如果当前线程是最后一个到达者，但是当前是子Phaser,则等待父节点进入下一阶段
                 if (root != this)
                     return parent.arriveAndAwaitAdvance();
                 long n = s & PARTIES_MASK;  // base of next state
                 int nextUnarrived = (int)n >>> PARTIES_SHIFT;
+                //onAdvance返回true说明已经中断
                 if (onAdvance(phase, nextUnarrived))
                     n |= TERMINATION_BIT;
                 else if (nextUnarrived == 0)
@@ -703,6 +864,7 @@ public class Phaser {
                 n |= (long)nextPhase << PHASE_SHIFT;
                 if (!UNSAFE.compareAndSwapLong(this, stateOffset, s, n))
                     return (int)(state >>> PHASE_SHIFT); // terminated
+                //清空上一阶段使用的线程等待队列
                 releaseWaiters(phase);
                 return nextPhase;
             }
@@ -1028,7 +1190,8 @@ public class Phaser {
     /**
      * Possibly blocks and waits for phase to advance unless aborted.
      * Call only on root phaser.
-     *
+     * 阻塞等待调用的是internalAwaitAdvance方法，其实就是根据当前阶段phase，将线程包装成结点加入到root结点所指向的某个“无锁栈”中：
+     * internalAwaitAdvance的主要逻辑就是：当前参与者线程等待Phaser进入下一个阶段(就是phase值变化).
      * @param phase current phase
      * @param node if non-null, the wait node to track interrupt and timeout;
      * if null, denotes noninterruptible wait
@@ -1036,8 +1199,12 @@ public class Phaser {
      */
     private int internalAwaitAdvance(int phase, QNode node) {
         // assert root == this;
-        releaseWaiters(phase-1);          // ensure old queue clean
-        boolean queued = false;           // true when node is enqueued
+        // 清空不用的Treiber Stack（奇偶Stack交替使用）
+        // ensure old queue clean
+        releaseWaiters(phase-1);
+        // 入队标识
+        // true when node is enqueued
+        boolean queued = false;
         int lastUnarrived = 0;            // to increase spins upon change
         int spins = SPINS_PER_ARRIVAL;
         long s;
@@ -1056,6 +1223,7 @@ public class Phaser {
             }
             else if (node.isReleasable()) // done or aborted
                 break;
+            // 将结点压入栈顶
             else if (!queued) {           // push onto queue
                 AtomicReference<QNode> head = (phase & 1) == 0 ? evenQ : oddQ;
                 QNode q = node.next = head.get();
@@ -1065,6 +1233,7 @@ public class Phaser {
             }
             else {
                 try {
+                    // 阻塞等待
                     ForkJoinPool.managedBlock(node);
                 } catch (InterruptedException ie) {
                     node.wasInterrupted = true;
@@ -1086,6 +1255,10 @@ public class Phaser {
 
     /**
      * Wait nodes for Treiber stack representing wait queue
+     * “无锁栈”的结点定义
+     *
+     * 注意：ForkJoinPool.ManagedBlocker是当栈包含ForkJoinWorkerThread类型的QNode阻塞的时候，
+     * ForkJoinPool内部会增加一个工作线程来保证并行度，后续讲ForkJoin框架时我们会进行分析。
      */
     static final class QNode implements ForkJoinPool.ManagedBlocker {
         final Phaser phaser;
@@ -1095,7 +1268,8 @@ public class Phaser {
         boolean wasInterrupted;
         long nanos;
         final long deadline;
-        volatile Thread thread; // nulled to cancel wait
+        // nulled to cancel wait
+        volatile Thread thread;
         QNode next;
 
         QNode(Phaser phaser, int phase, boolean interruptible,

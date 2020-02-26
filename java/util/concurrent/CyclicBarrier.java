@@ -261,11 +261,11 @@ public class CyclicBarrier {
         try {
             final Generation g = generation;
 
-            //如果展览已经损坏，则抛出异常
+            //如果generation已经损坏，则抛出异常
             if (g.broken)
                 throw new BrokenBarrierException();
 
-            //如果当前调用线程呗中断
+            //如果当前调用线程被中断
             if (Thread.interrupted()) {
                 //破坏栅栏，唤醒素有已经等待的线程
                 breakBarrier();

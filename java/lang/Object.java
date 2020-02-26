@@ -370,7 +370,7 @@ public class Object {
      * @throws  IllegalArgumentException      if the value of timeout is
      *               negative.
      * @throws  IllegalMonitorStateException  if the current thread is not
-     *               the owner of the object's monitor.
+     *               the owner of the object's monitor.T
      * @throws  InterruptedException if any thread interrupted the
      *             current thread before or while the current thread
      *             was waiting for a notification.  The <i>interrupted
